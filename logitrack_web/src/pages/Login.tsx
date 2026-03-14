@@ -1,0 +1,91 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+
+export function Login() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      await login(username, password);
+      navigate("/");
+    } catch {
+      setError("Invalid username or password.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      minHeight: "100vh", display: "flex", alignItems: "center",
+      justifyContent: "center", background: "#f1f5f9",
+    }}>
+      <div style={{ width: 360, background: "#fff", borderRadius: 12, padding: 36, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ fontSize: 28, fontWeight: 800, color: "#1e3a5f", letterSpacing: 1 }}>LogiTrack</div>
+          <div style={{ color: "#6b7280", fontSize: 14, marginTop: 4 }}>Sign in to continue</div>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: "grid", gap: 14 }}>
+          <div style={{ display: "grid", gap: 4 }}>
+            <label style={labelStyle}>Username</label>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required autoFocus
+              style={inputStyle}
+              placeholder="e.g. operator"
+            />
+          </div>
+          <div style={{ display: "grid", gap: 4 }}>
+            <label style={labelStyle}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={inputStyle}
+              placeholder="••••••••••"
+            />
+          </div>
+
+          {error && <p style={{ color: "#ef4444", fontSize: 13, margin: 0 }}>{error}</p>}
+
+          <button type="submit" disabled={loading}
+            style={{ background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 8, padding: "11px", cursor: "pointer", fontWeight: 700, fontSize: 15, marginTop: 4 }}>
+            {loading ? "Signing in..." : "Sign In"}
+          </button>
+        </form>
+
+        <div style={{ marginTop: 24, padding: 14, background: "#f8fafc", borderRadius: 8, fontSize: 12, color: "#6b7280" }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Demo accounts</div>
+          {[
+            { u: "operator",   p: "operator123",   r: "Operator" },
+            { u: "supervisor", p: "supervisor123",  r: "Supervisor" },
+            { u: "gerente",    p: "gerente123",     r: "Manager" },
+            { u: "admin",      p: "admin123",       r: "Admin" },
+            { u: "chofer",     p: "chofer123",      r: "Chofer" },
+          ].map(({ u, p, r }) => (
+            <div key={u} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", cursor: "pointer" }}
+              onClick={() => { setUsername(u); setPassword(p); }}>
+              <span style={{ color: "#374151" }}><strong>{u}</strong> / {p}</span>
+              <span style={{ color: "#9ca3af" }}>{r}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const labelStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: "#374151" };
+const inputStyle: React.CSSProperties = { padding: "9px 12px", borderRadius: 7, border: "1px solid #d1d5db", fontSize: 14 };
