@@ -18,9 +18,7 @@ Las empresas de logística operan con múltiples sucursales, distintos perfiles 
 
 - **Visibilidad total de la cadena logística** — cada envío tiene un historial completo de eventos, ubicaciones y responsables.
 - **Control de acceso por rol** — cada perfil de usuario ve y puede hacer exactamente lo que le corresponde, sin más ni menos.
-- **Seguimiento público sin login** — los clientes finales pueden consultar el estado de su envío desde cualquier dispositivo con solo ingresar el número de tracking.
 - **Dashboard gerencial** — métricas en tiempo real sobre volumen de envíos, tasas de entrega, envíos problemáticos y rendimiento por sucursal.
-- **Flujo de borradores** — los operadores pueden armar un envío paso a paso antes de confirmarlo, sin generar movimientos prematuros en el sistema.
 
 ### Para los operadores (día a día)
 
@@ -63,18 +61,6 @@ Borrador (pending)
 
 Los envíos con múltiples escalas repiten el tramo `en sucursal → en tránsito → en sucursal` tantas veces como sea necesario.
 
----
-
-## Perfiles de usuario
-
-| Perfil | Puede crear envíos | Puede actualizar estados | Ve el dashboard |
-|--------|--------------------|--------------------------|-----------------|
-| Operador | Sí | No | No |
-| Supervisor | Sí | Sí | No |
-| Gerente | No | No | Sí |
-| Admin | Sí | Sí | Sí |
-
----
 
 ## Número de tracking
 
