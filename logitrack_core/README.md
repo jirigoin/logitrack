@@ -22,14 +22,6 @@ go run cmd/server/main.go
 
 El servidor queda disponible en `http://localhost:8080`.
 
-## Verificar que funciona
-
-```bash
-curl http://localhost:8080/api/v1/branches
-```
-
-Debe devolver la lista de sucursales cargadas al inicio.
-
 ## Build
 
 ```bash
