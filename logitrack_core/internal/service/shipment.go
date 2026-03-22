@@ -231,12 +231,16 @@ func (s *ShipmentService) UpdateStatus(trackingID string, req model.UpdateStatus
 	if !isValidTransition(current.Status, req.Status) {
 		return model.Shipment{}, fmt.Errorf("invalid transition: %s → %s", current.Status, req.Status)
 	}
-	// Validate returned: sender DNI must match
+	// Validate returned: sender DNI must match (corrections take precedence)
 	if req.Status == model.StatusReturned {
 		if strings.TrimSpace(req.SenderDNI) == "" {
 			return model.Shipment{}, fmt.Errorf("sender_dni is required for returned")
 		}
-		if current.SenderDNI != req.SenderDNI {
+		expectedSenderDNI := current.SenderDNI
+		if corrected, ok := current.Corrections["sender_dni"]; ok {
+			expectedSenderDNI = corrected
+		}
+		if expectedSenderDNI != req.SenderDNI {
 			return model.Shipment{}, fmt.Errorf("El DNI no coincide con el del remitente esperado")
 		}
 	}
@@ -248,12 +252,16 @@ func (s *ShipmentService) UpdateStatus(trackingID string, req model.UpdateStatus
 			}
 		}
 	}
-	// Validate DNI before touching the repository
+	// Validate DNI before touching the repository (corrections take precedence)
 	if req.Status == model.StatusDelivered {
 		if strings.TrimSpace(req.RecipientDNI) == "" {
 			return model.Shipment{}, fmt.Errorf("recipient_dni is required for delivery")
 		}
-		if current.RecipientDNI != req.RecipientDNI {
+		expectedRecipientDNI := current.RecipientDNI
+		if corrected, ok := current.Corrections["recipient_dni"]; ok {
+			expectedRecipientDNI = corrected
+		}
+		if expectedRecipientDNI != req.RecipientDNI {
 			return model.Shipment{}, fmt.Errorf("El DNI no coincide con el del destinatario esperado")
 		}
 	}
