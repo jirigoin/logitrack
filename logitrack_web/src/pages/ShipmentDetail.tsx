@@ -266,9 +266,15 @@ export function ShipmentDetail() {
     [a.street, a.city, a.province, a.postal_code].filter(Boolean).join(", ");
 
   return (
-    <div style={{ padding: 24, maxWidth: 720 }}>
+    <div style={{ padding: "24px 32px" }}>
       <button onClick={() => navigate("/")} style={backBtn}>← Back to list</button>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 16, marginBottom: 20 }}>
+
+      <div style={{ display: "grid", gridTemplateColumns: "720px 300px", gap: 32, alignItems: "start", marginTop: 16, justifyContent: "center" }}>
+
+      {/* ── Left column ── */}
+      <div>
+      <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <h1 style={{ margin: 0 }}>
           <code style={{ fontSize: 22 }}>{shipment.tracking_id}</code>
         </h1>
@@ -281,7 +287,6 @@ export function ShipmentDetail() {
           <StatusBadge status={shipment.status} />
         </div>
       </div>
-
       {shipment.status === "pending" && draftForm ? (
         /* ── Draft edit form ── */
         <DraftEditForm
@@ -466,55 +471,6 @@ export function ShipmentDetail() {
         </div>
       )}
 
-      {/* Comments */}
-      <div style={{ ...cardStyle, marginBottom: 16 }}>
-        <h2 style={{ fontSize: "1rem", margin: "0 0 12px" }}>Comments</h2>
-        {hasRole("supervisor", "admin") && shipment.status !== "delivered" && shipment.status !== "returned" && (
-          <div style={{ marginBottom: 12 }}>
-            <textarea
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Add a comment..."
-              rows={2}
-              style={{ ...inputStyle, width: "100%", boxSizing: "border-box" as const, resize: "vertical" as const, fontFamily: "inherit" }}
-            />
-            <button
-              disabled={addingComment || !newComment.trim()}
-              onClick={async () => {
-                if (!trackingId || !newComment.trim()) return;
-                setAddingComment(true);
-                try {
-                  await shipmentApi.addComment(trackingId, newComment.trim());
-                  setNewComment("");
-                  const cmts = await shipmentApi.getComments(trackingId);
-                  setComments(cmts);
-                } finally {
-                  setAddingComment(false);
-                }
-              }}
-              style={{ marginTop: 6, background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}
-            >
-              {addingComment ? "Adding..." : "Add comment"}
-            </button>
-          </div>
-        )}
-        {comments.length === 0 ? (
-          <p style={{ color: "#6b7280", fontSize: 13, margin: 0 }}>No comments yet.</p>
-        ) : (
-          <div style={{ display: "grid", gap: 8 }}>
-            {comments.map((c) => (
-              <div key={c.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600 }}>{c.author}</span>
-                  <span style={{ color: "#9ca3af", fontSize: 12 }}>{fmtDateTime(c.created_at)}</span>
-                </div>
-                <p style={{ margin: 0, color: "#374151", whiteSpace: "pre-wrap" as const }}>{c.body}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Event history */}
       <h2 style={{ fontSize: "1rem", marginBottom: 12 }}>Event History</h2>
       {events.length === 0 ? (
@@ -548,6 +504,62 @@ export function ShipmentDetail() {
           ))}
         </div>
       )}
+      </div>{/* end maxWidth wrapper */}
+      </div>{/* end left column */}
+
+      {/* ── Right column: Comments ── */}
+      <div style={{ position: "sticky", top: 24 }}>
+        <div style={{ ...cardStyle }}>
+          <h2 style={{ fontSize: "1rem", margin: "0 0 12px" }}>Comments</h2>
+          {hasRole("supervisor", "admin") && shipment.status !== "delivered" && shipment.status !== "returned" && (
+            <div style={{ marginBottom: 12 }}>
+              <textarea
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Add a comment..."
+                rows={2}
+                style={{ ...inputStyle, width: "100%", boxSizing: "border-box" as const, resize: "vertical" as const, fontFamily: "inherit" }}
+              />
+              <button
+                disabled={addingComment || !newComment.trim()}
+                onClick={async () => {
+                  if (!trackingId || !newComment.trim()) return;
+                  setAddingComment(true);
+                  try {
+                    await shipmentApi.addComment(trackingId, newComment.trim());
+                    setNewComment("");
+                    const cmts = await shipmentApi.getComments(trackingId);
+                    setComments(cmts);
+                  } finally {
+                    setAddingComment(false);
+                  }
+                }}
+                style={{ marginTop: 6, background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", cursor: "pointer", fontWeight: 600, fontSize: 13 }}
+              >
+                {addingComment ? "Adding..." : "Add comment"}
+              </button>
+            </div>
+          )}
+          {comments.length === 0 ? (
+            <p style={{ color: "#6b7280", fontSize: 13, margin: 0 }}>No comments yet.</p>
+          ) : (
+            <div style={{ display: "grid", gap: 8, maxHeight: 500, overflowY: "auto" }}>
+              {comments.map((c) => (
+                <div key={c.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontWeight: 600 }}>{c.author}</span>
+                    <span style={{ color: "#9ca3af", fontSize: 12 }}>{fmtDateTime(c.created_at)}</span>
+                  </div>
+                  <p style={{ margin: 0, color: "#374151", whiteSpace: "pre-wrap" as const }}>{c.body}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      </div>{/* end two-column grid */}
+
       {showCorrectionModal && shipment && (
         <CorrectionModal
           form={correctionForm}
