@@ -141,7 +141,7 @@ func (h *ShipmentHandler) UpdateStatus(c *gin.Context) {
 	trackingID := c.Param("tracking_id")
 	shipment, err := h.svc.UpdateStatus(trackingID, req)
 	if err == nil && req.Status == model.StatusDelivering && req.DriverID != "" {
-		today := timeNow().Format("2006-01-02")
+		today := model.NewDateOnly(timeNow())
 		_ = h.routeSvc.AddShipmentToDriverRoute(req.DriverID, trackingID, today)
 	}
 	if err != nil {
@@ -177,13 +177,27 @@ func (h *ShipmentHandler) CorrectShipment(c *gin.Context) {
 	}
 	user := c.MustGet(middleware.UserKey).(model.User)
 	trackingID := c.Param("tracking_id")
-	shipment, commentBodies, err := h.svc.CorrectShipment(trackingID, user.Username, req)
+	shipment, err := h.svc.CorrectShipment(trackingID, user.Username, req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	for _, body := range commentBodies {
-		_, _ = h.commentSvc.AddComment(trackingID, user.Username, body)
+	c.JSON(http.StatusOK, shipment)
+}
+
+func (h *ShipmentHandler) CancelShipment(c *gin.Context) {
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	user := c.MustGet(middleware.UserKey).(model.User)
+	shipment, err := h.svc.CancelShipment(c.Param("tracking_id"), user.Username, body.Reason)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 	c.JSON(http.StatusOK, shipment)
 }

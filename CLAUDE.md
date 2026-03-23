@@ -79,8 +79,9 @@ pending (draft) ──confirm──► in_progress ──► in_transit ──�
 - `delivery_failed` = attempted but unsuccessful; supervisor/admin decide next step.
 - `ready_for_pickup` = recipient will pick up at the current branch (any branch).
 - `ready_for_return` = sender will pick up at the **origin branch** only (enforced server-side: `current_location` must equal the receiving branch's city).
-- `delivered`, `returned` are terminal states — no further transitions.
+- `delivered`, `returned`, `cancelled` are terminal states — no further transitions.
 - Multi-hop routes repeat `at_branch → in_transit → at_branch`.
+- Any intermediate state (`in_progress`, `in_transit`, `at_branch`, `delivering`, `delivery_failed`, `ready_for_pickup`, `ready_for_return`) can be cancelled via `CancelShipment` — `pending` and terminal states cannot.
 
 **DNI validation** (enforced before any repo write in `service/shipment.go`):
 - `→ delivered`: `recipient_dni` required and must match `shipment.recipient_dni`.
@@ -128,15 +129,21 @@ pending (draft) ──confirm──► in_progress ──► in_transit ──�
 - Non-destructive edits for confirmed shipments — original data is never modified.
 - Stored in `Shipment.Corrections map[string]string` (field key → corrected value); corrections accumulate on successive calls.
 - Endpoint: `PATCH /shipments/:tracking_id/correct` — supervisor and admin only.
-- Blocked on `pending` (edit the draft directly) and terminal states (`delivered`, `returned`).
+- Blocked on `pending` (edit the draft directly) and terminal states (`delivered`, `returned`, `cancelled`).
 - Each corrected field auto-generates a comment: `[Corrección] <label>. Nuevo valor: <value>`.
 - Creates a `ShipmentEvent` with `event_type: "edited"` (status unchanged).
 - `ShipmentHandler` holds a reference to `CommentService` to persist auto-comments after corrections.
 
+**Cancellation** (service/shipment.go `CancelShipment`):
+- Endpoint: `POST /shipments/:tracking_id/cancel` — supervisor and admin only.
+- Body: `{ "reason": "..." }` — reason is required; returns 400 if empty.
+- Blocked on `pending` and all terminal states (`delivered`, `returned`, `cancelled`).
+- On success: transitions to `cancelled`, creates a `ShipmentEvent` (from_status → cancelled), and auto-adds a comment `[Cancelación] <reason>`.
+
 **Customer autocomplete** (handler/customer.go, repository/customer.go):
 - `GET /customers?dni=XXXXX` returns a stored customer by exact DNI match.
 - Customers are auto-upserted whenever a shipment is created (both sender and recipient).
-- Used by the frontend to auto-fill sender/recipient fields when creating a shipment.
+- In `NewShipment`, typing ≥7 digits triggers a lookup after 400ms debounce. If a match is found, a suggestion popover appears below the DNI field with the customer's name, phone and city — the user must click "Use data" to apply it. Nothing is auto-filled without confirmation.
 
 ### Adding a new endpoint
 
@@ -184,13 +191,14 @@ src/
 - `+ New Shipment` button: hidden from managers
 - Status update panel in `ShipmentDetail`: only supervisor + admin
 - Dashboard nav link: only supervisor + manager + admin
-- `✏️ Editar datos` button in `ShipmentDetail`: only supervisor + admin, hidden on `pending`/`delivered`/`returned`
+- `✏️ Edit data` button in `ShipmentDetail`: only supervisor + admin, hidden on `pending`/`delivered`/`returned`/`cancelled`
+- `Cancel shipment` button in `ShipmentDetail`: only supervisor + admin, hidden on `pending` and terminal states (`delivered`, `returned`, `cancelled`)
 
 **Branches** are fetched from `GET /api/v1/branches` at runtime — never hardcoded in the frontend. The `branchLabel(city, branches)` helper in `api/branches.ts` maps a city string to a display name. In `RouteTimeline`, nodes show city + province directly from the branches array (not the display name).
 
 **Draft workflow**: drafts (`pending`) are created via `POST /shipments/draft` and edited via `PATCH /shipments/:id/draft`. After saving changes in `ShipmentDetail`, the UI redirects to `/?status=pending` (shipment list pre-filtered to Draft). Confirming a draft via `POST /shipments/:id/confirm` generates a real `LT-` tracking ID and moves the shipment to `in_progress`.
 
-**ShipmentList filter**: the `status` query param pre-selects the filter on load (e.g. `/?status=pending`). Default filter is `active` (excludes `delivered` and `pending`).
+**ShipmentList filter**: the `status` query param pre-selects the filter on load (e.g. `/?status=pending`). Default filter is `active` (excludes `delivered`, `pending`, `returned`, and `cancelled`). Date filtering is applied client-side using local timezone — the backend `date_from`/`date_to` params are not used, to avoid UTC/local timezone mismatches in displayed dates.
 
 **Shipment list ordering**: the backend returns shipments sorted by tracking ID ascending (`List()` and `Search()` both apply `sort.Slice`).
 
@@ -288,6 +296,7 @@ Customers from all shipments are auto-upserted into the customer repository for 
 | POST | /api/v1/shipments/:tracking_id/confirm | Bearer | operator, supervisor, admin | Confirm draft → in_progress |
 | PATCH | /api/v1/shipments/:tracking_id/status | Bearer | supervisor, admin, driver | Update shipment status |
 | PATCH | /api/v1/shipments/:tracking_id/correct | Bearer | supervisor, admin | Apply non-destructive field corrections |
+| POST | /api/v1/shipments/:tracking_id/cancel | Bearer | supervisor, admin | Cancel shipment (body: `reason` required) |
 | POST | /api/v1/shipments/:tracking_id/comments | Bearer | supervisor, admin | Add comment |
 | GET | /api/v1/stats | Bearer | supervisor, manager, admin | Dashboard stats |
 | GET | /api/v1/users/drivers | Bearer | supervisor, admin | List driver users |

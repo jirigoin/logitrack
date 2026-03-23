@@ -22,8 +22,8 @@ api.interceptors.response.use(
   }
 );
 
-export type ShipmentStatus = "pending" | "in_progress" | "in_transit" | "at_branch" | "delivering" | "delivery_failed" | "delivered" | "ready_for_pickup" | "ready_for_return" | "returned";
-export type PackageType = "envelope" | "box" | "pallet" | "fragile";
+export type ShipmentStatus = "pending" | "in_progress" | "in_transit" | "at_branch" | "delivering" | "delivery_failed" | "delivered" | "ready_for_pickup" | "ready_for_return" | "returned" | "cancelled";
+export type PackageType = "envelope" | "box" | "pallet";
 
 export interface Address {
   street?: string;
@@ -46,11 +46,13 @@ export interface Shipment {
   destination: Address;
   weight_kg: number;
   package_type: PackageType;
+  is_fragile?: boolean;
   special_instructions?: string;
   receiving_branch_id?: string;
-  current_location?: string;
+  current_location?: string; // branch ID of current location
   status: ShipmentStatus;
   created_at: string;
+  updated_at: string;
   estimated_delivery_at: string;
   delivered_at?: string;
   corrections?: Record<string, string>;
@@ -59,7 +61,8 @@ export interface Shipment {
 export interface ShipmentEvent {
   id: string;
   tracking_id: string;
-  from_status: ShipmentStatus | "";
+  event_type?: string; // "status_change" | "edited"
+  from_status?: ShipmentStatus; // absent for initial creation events
   to_status: ShipmentStatus;
   changed_by: string;
   location?: string;
@@ -70,6 +73,7 @@ export interface ShipmentEvent {
 export interface Stats {
   total: number;
   by_status: Record<ShipmentStatus, number>;
+  by_branch: Record<string, number>; // branch ID → active shipment count
 }
 
 export interface CreateShipmentPayload {
@@ -85,6 +89,7 @@ export interface CreateShipmentPayload {
   destination: Address;
   weight_kg: number;
   package_type: PackageType;
+  is_fragile?: boolean;
   special_instructions?: string;
   receiving_branch_id: string;
   created_by?: string;
@@ -104,6 +109,7 @@ export interface SaveDraftPayload {
   destination?: Partial<Address>;
   weight_kg?: number;
   package_type?: PackageType;
+  is_fragile?: boolean;
   special_instructions?: string;
   receiving_branch_id?: string;
   created_by?: string;
@@ -157,5 +163,7 @@ export const shipmentApi = {
     api.post<ShipmentComment>(`/shipments/${trackingId}/comments`, { body }).then((r) => r.data),
   correctShipment: (trackingId: string, corrections: Record<string, string>) =>
     api.patch<Shipment>(`/shipments/${trackingId}/correct`, { corrections }).then((r) => r.data),
+  cancelShipment: (trackingId: string, reason: string) =>
+    api.post<Shipment>(`/shipments/${trackingId}/cancel`, { reason }).then((r) => r.data),
   stats: () => api.get<Stats>("/stats").then((r) => r.data),
 };

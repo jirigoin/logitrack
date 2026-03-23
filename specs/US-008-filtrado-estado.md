@@ -14,7 +14,7 @@ El listado de envíos tiene un selector de estado que filtra los resultados most
 
 | Valor | Etiqueta | Comportamiento |
 |---|---|---|
-| `active` | Active | Excluye `pending`, `delivered`, `returned`. Es el **filtro por defecto**. |
+| `active` | Active | Excluye `pending`, `delivered`, `returned`, `cancelled`. Es el **filtro por defecto**. |
 | `` (vacío) | All | Muestra todos los envíos sin filtrar por estado. |
 | `pending` | Draft | Solo borradores |
 | `in_progress` | In Progress | |
@@ -26,17 +26,18 @@ El listado de envíos tiene un selector de estado que filtra los resultados most
 | `ready_for_pickup` | Ready for Pickup | |
 | `ready_for_return` | Ready for Return | |
 | `returned` | Returned | |
+| `cancelled` | Cancelled | Solo envíos cancelados |
 
 ---
 
 ## Reglas de negocio
 
 1. El filtro por estado es **client-side**: se aplica sobre el array de envíos ya cargado en memoria.
-2. El filtro por fecha es **server-side**: `date_from`/`date_to` se envían como query params al backend (`GET /shipments`).
-3. Ambos filtros son **aditivos**: el backend devuelve los envíos filtrados por fecha y el frontend aplica el filtro de estado encima.
-4. Al cargar la página, si existe el query param `?status=<valor>` en la URL, el filtro se inicializa con ese valor (ej: `/?status=pending` pre-selecciona "Draft").
-5. El filtro por defecto es `active` (excluye terminales `delivered` y `returned`, y borradores `pending`).
-6. Cuando hay una búsqueda por texto activa, la fecha es ignorada (la búsqueda usa un endpoint distinto que no acepta parámetros de fecha); el filtro de estado sigue siendo aplicable.
+2. El filtro por fecha es también **client-side**: se aplica sobre `created_at` usando la fecha local del usuario (no query params al backend). Ver US-007 para la justificación de zona horaria.
+3. Ambos filtros son **aditivos** y se aplican simultáneamente sobre la lista en memoria.
+4. Al cargar la página, si existe el query param `?status=<valor>` en la URL, el filtro se inicializa con ese valor (ej: `/?status=pending` pre-selecciona "Draft"). El valor persiste en `sessionStorage`.
+5. El filtro por defecto es `active` (excluye terminales `delivered`, `returned` y `cancelled`, y borradores `pending`).
+6. Cuando hay una búsqueda por texto activa, la fecha es ignorada (la búsqueda usa un endpoint distinto); el filtro de estado sigue siendo aplicable.
 
 ---
 
@@ -61,10 +62,10 @@ El listado de envíos tiene un selector de estado que filtra los resultados most
 
 ---
 
-### CA03 — Filtro "Active" excluye terminales y borradores
+### CA03 — Filtro "Active" excluye terminales, borradores y cancelados
 
 **Dado** que el filtro activo es "Active" (por defecto)
-**Entonces** no se muestran envíos en estado `pending`, `delivered` ni `returned`
+**Entonces** no se muestran envíos en estado `pending`, `delivered`, `returned` ni `cancelled`
 **Y** sí se muestran envíos en cualquier estado intermedio (`in_progress`, `in_transit`, `at_branch`, `delivering`, `delivery_failed`, `ready_for_pickup`, `ready_for_return`)
 
 ---

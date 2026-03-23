@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { shipmentApi, type CreateShipmentPayload, type PackageType, type Shipment } from "../api/shipments";
 import { branchApi, type Branch } from "../api/branches";
-import { customerApi } from "../api/customers";
+import { customerApi, type Customer } from "../api/customers";
 import { fmtDateTime } from "../utils/date";
 
 const PROVINCES = [
@@ -16,7 +16,6 @@ const PACKAGE_TYPES: { value: PackageType; label: string }[] = [
   { value: "envelope", label: "Envelope" },
   { value: "box",      label: "Box" },
   { value: "pallet",   label: "Pallet" },
-  { value: "fragile",  label: "Fragile" },
 ];
 
 const emptyAddress = { street: "", city: "", province: "", postal_code: "" };
@@ -38,8 +37,8 @@ export function NewShipment() {
   const [error, setError] = useState("");
   const [drafts, setDrafts] = useState<Shipment[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [senderAutofilled, setSenderAutofilled] = useState(false);
-  const [recipientAutofilled, setRecipientAutofilled] = useState(false);
+  const [senderSuggestion, setSenderSuggestion] = useState<Customer | null>(null);
+  const [recipientSuggestion, setRecipientSuggestion] = useState<Customer | null>(null);
   const senderDNITimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recipientDNITimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
@@ -56,54 +55,60 @@ export function NewShipment() {
 
   const handleSenderDNI = (dni: string) => {
     set("sender_dni", dni);
-    setSenderAutofilled(false);
+    setSenderSuggestion(null);
     if (senderDNITimer.current) clearTimeout(senderDNITimer.current);
     if (dni.length >= 7) {
       senderDNITimer.current = setTimeout(async () => {
         const customer = await customerApi.getByDNI(dni);
-        if (customer) {
-          setForm((prev) => ({
-            ...prev,
-            sender_name: customer.name,
-            sender_phone: customer.phone,
-            sender_email: customer.email ?? prev.sender_email,
-            origin: {
-              street: customer.address.street ?? prev.origin.street,
-              city: customer.address.city || prev.origin.city,
-              province: customer.address.province || prev.origin.province,
-              postal_code: customer.address.postal_code ?? prev.origin.postal_code,
-            },
-          }));
-          setSenderAutofilled(true);
-        }
+        if (customer) setSenderSuggestion(customer);
       }, 400);
     }
   };
 
+  const applySenderSuggestion = () => {
+    if (!senderSuggestion) return;
+    setForm((prev) => ({
+      ...prev,
+      sender_name: senderSuggestion.name,
+      sender_phone: senderSuggestion.phone,
+      sender_email: senderSuggestion.email ?? prev.sender_email,
+      origin: {
+        street: senderSuggestion.address.street ?? prev.origin.street,
+        city: senderSuggestion.address.city || prev.origin.city,
+        province: senderSuggestion.address.province || prev.origin.province,
+        postal_code: senderSuggestion.address.postal_code ?? prev.origin.postal_code,
+      },
+    }));
+    setSenderSuggestion(null);
+  };
+
   const handleRecipientDNI = (dni: string) => {
     set("recipient_dni", dni);
-    setRecipientAutofilled(false);
+    setRecipientSuggestion(null);
     if (recipientDNITimer.current) clearTimeout(recipientDNITimer.current);
     if (dni.length >= 7) {
       recipientDNITimer.current = setTimeout(async () => {
         const customer = await customerApi.getByDNI(dni);
-        if (customer) {
-          setForm((prev) => ({
-            ...prev,
-            recipient_name: customer.name,
-            recipient_phone: customer.phone,
-            recipient_email: customer.email ?? prev.recipient_email,
-            destination: {
-              street: customer.address.street ?? prev.destination.street,
-              city: customer.address.city || prev.destination.city,
-              province: customer.address.province || prev.destination.province,
-              postal_code: customer.address.postal_code ?? prev.destination.postal_code,
-            },
-          }));
-          setRecipientAutofilled(true);
-        }
+        if (customer) setRecipientSuggestion(customer);
       }, 400);
     }
+  };
+
+  const applyRecipientSuggestion = () => {
+    if (!recipientSuggestion) return;
+    setForm((prev) => ({
+      ...prev,
+      recipient_name: recipientSuggestion.name,
+      recipient_phone: recipientSuggestion.phone,
+      recipient_email: recipientSuggestion.email ?? prev.recipient_email,
+      destination: {
+        street: recipientSuggestion.address.street ?? prev.destination.street,
+        city: recipientSuggestion.address.city || prev.destination.city,
+        province: recipientSuggestion.address.province || prev.destination.province,
+        postal_code: recipientSuggestion.address.postal_code ?? prev.destination.postal_code,
+      },
+    }));
+    setRecipientSuggestion(null);
   };
 
   const setAddr = (side: "origin" | "destination", field: string, value: string) =>
@@ -132,7 +137,7 @@ export function NewShipment() {
       navigate(`/shipments/${shipment.tracking_id}`);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setError(msg ?? "No se pudo guardar el borrador. Intentá de nuevo.");
+      setError(msg ?? "Failed to save draft. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -152,14 +157,14 @@ export function NewShipment() {
             {drafts.map((d) => (
               <div key={d.tracking_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", border: "1px solid #fde68a", borderRadius: 7, padding: "8px 12px" }}>
                 <div style={{ fontSize: 13 }}>
-                  <span style={{ fontWeight: 600 }}>{d.sender_name || "Sin nombre"}</span>
+                  <span style={{ fontWeight: 600 }}>{d.sender_name || "No name"}</span>
                   <span style={{ color: "#9ca3af", margin: "0 6px" }}>→</span>
-                  <span>{d.recipient_name || "Sin nombre"}</span>
+                  <span>{d.recipient_name || "No name"}</span>
                   <span style={{ color: "#9ca3af", fontSize: 12, marginLeft: 10 }}>{fmtDateTime(d.created_at)}</span>
                 </div>
                 <button onClick={() => navigate(`/shipments/${d.tracking_id}`)}
                   style={{ background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, padding: "5px 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>
-                  Retomar
+                  Resume
                 </button>
               </div>
             ))}
@@ -186,9 +191,14 @@ export function NewShipment() {
               <input style={input} type="email" value={form.sender_email}
                 onChange={(e) => set("sender_email", e.target.value)} placeholder="optional" />
             </Field>
-            <Field label={senderAutofilled ? "DNI * ✓ datos autocompletados" : "DNI *"}>
-              <input style={input} required value={form.sender_dni}
-                onChange={(e) => handleSenderDNI(e.target.value)} placeholder="Ej: 30123456" />
+            <Field label="DNI *">
+              <div style={{ position: "relative" }}>
+                <input style={input} required value={form.sender_dni}
+                  onChange={(e) => handleSenderDNI(e.target.value)} placeholder="Ej: 30123456" />
+                {senderSuggestion && (
+                  <CustomerSuggestion customer={senderSuggestion} onApply={applySenderSuggestion} onDismiss={() => setSenderSuggestion(null)} />
+                )}
+              </div>
             </Field>
           </Row2>
           <Row2>
@@ -233,9 +243,14 @@ export function NewShipment() {
               <input style={input} type="email" value={form.recipient_email}
                 onChange={(e) => set("recipient_email", e.target.value)} placeholder="optional" />
             </Field>
-            <Field label={recipientAutofilled ? "DNI * ✓ datos autocompletados" : "DNI *"}>
-              <input style={input} required value={form.recipient_dni}
-                onChange={(e) => handleRecipientDNI(e.target.value)} placeholder="Ej: 28456789" />
+            <Field label="DNI *">
+              <div style={{ position: "relative" }}>
+                <input style={input} required value={form.recipient_dni}
+                  onChange={(e) => handleRecipientDNI(e.target.value)} placeholder="Ej: 28456789" />
+                {recipientSuggestion && (
+                  <CustomerSuggestion customer={recipientSuggestion} onApply={applyRecipientSuggestion} onDismiss={() => setRecipientSuggestion(null)} />
+                )}
+              </div>
             </Field>
           </Row2>
           <Row2>
@@ -291,10 +306,17 @@ export function NewShipment() {
               </select>
             </Field>
           </Row2>
+          <Field label="">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!form.is_fragile}
+                onChange={(e) => set("is_fragile", e.target.checked)} />
+              Fragile contents (handle with care)
+            </label>
+          </Field>
           <Field label="Special Instructions">
             <input style={input} value={form.special_instructions}
               onChange={(e) => set("special_instructions", e.target.value)}
-              placeholder='e.g. "Fragile — glass items"' />
+              placeholder='e.g. "Keep upright"' />
           </Field>
         </Section>
 
@@ -303,14 +325,47 @@ export function NewShipment() {
         <div style={{ display: "flex", gap: 12 }}>
           <button type="button" disabled={loading} onClick={handleSaveDraft}
             style={{ flex: 1, background: "#fff", color: "#374151", border: "1px solid #d1d5db", borderRadius: 8, padding: "12px", cursor: "pointer", fontWeight: 600, fontSize: 15 }}>
-            {loading ? "Guardando..." : "Guardar borrador"}
+            {loading ? "Saving..." : "Save draft"}
           </button>
           <button type="submit" disabled={loading}
             style={{ flex: 1, background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 8, padding: "12px", cursor: "pointer", fontWeight: 700, fontSize: 15 }}>
-            {loading ? "Creando..." : "Crear envío"}
+            {loading ? "Creating..." : "Create shipment"}
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function CustomerSuggestion({ customer, onApply, onDismiss }: { customer: Customer; onApply: () => void; onDismiss: () => void }) {
+  return (
+    <div style={{
+      position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 50,
+      border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: 8,
+      padding: "10px 12px", display: "flex", justifyContent: "space-between",
+      alignItems: "center", gap: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+    }}>
+      <div style={{ fontSize: 13, color: "#1e40af", lineHeight: 1.5, minWidth: 0 }}>
+        <span style={{ fontWeight: 700 }}>{customer.name}</span>
+        <span style={{ color: "#6b7280", margin: "0 6px" }}>·</span>
+        <span>{customer.phone}</span>
+        {customer.address.city && (
+          <>
+            <span style={{ color: "#6b7280", margin: "0 6px" }}>·</span>
+            <span>{customer.address.city}, {customer.address.province}</span>
+          </>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        <button type="button" onClick={onApply}
+          style={{ background: "#1e40af", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+          Usar datos
+        </button>
+        <button type="button" onClick={onDismiss}
+          style={{ background: "none", color: "#6b7280", border: "1px solid #d1d5db", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12 }}>
+          ✕
+        </button>
+      </div>
     </div>
   );
 }

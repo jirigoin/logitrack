@@ -13,7 +13,7 @@
 3. Cada campo corregido genera automáticamente un comentario interno con el nuevo valor.
 4. Se registra un evento de auditoría con `event_type: "edited"` y el usuario responsable.
 5. Solo Supervisor y Admin pueden aplicar correcciones.
-6. No se pueden corregir envíos en estado `pending` (se editan directamente via borrador) ni en estados terminales (`delivered`, `returned`).
+6. No se pueden corregir envíos en estado `pending` (se editan directamente via borrador) ni en estados terminales (`delivered`, `returned`, `cancelled`).
 
 ---
 
@@ -72,7 +72,7 @@ Cualquier key fuera de esta lista es rechazada con `400 Bad Request`.
 
 ## Comportamiento del frontend
 
-- En `ShipmentDetail`, el botón **✏️ Editar datos** aparece para supervisor y admin en envíos que no son `pending`, `delivered` ni `returned`.
+- En `ShipmentDetail`, el botón **✏️ Edit data** aparece para supervisor y admin en envíos que no son `pending`, `delivered`, `returned` ni `cancelled`.
 - Al hacer click se abre un modal con todos los campos corregibles pre-llenados con el valor efectivo actual (corrección existente o dato original).
 - Al guardar, solo se envían los campos que cambiaron respecto al valor efectivo actual.
 - En las tarjetas de datos (Remitente, Destinatario, Paquete), los campos con corrección activa muestran:
@@ -90,7 +90,7 @@ Cualquier key fuera de esta lista es rechazada con `400 Bad Request`.
 | Modifica datos orig.  | Sí (es un draft, no hay historial aún)  | No — solo agrega correcciones                 |
 | Comentario automático | No                                      | Sí — uno por campo corregido                  |
 | Evento de auditoría   | No                                      | Sí — `event_type: "edited"`                   |
-| Estados permitidos    | Solo `pending`                          | Todo excepto `pending`, `delivered`, `returned` |
+| Estados permitidos    | Solo `pending`                          | Todo excepto `pending`, `delivered`, `returned`, `cancelled` |
 
 ---
 
@@ -116,7 +116,7 @@ Cualquier key fuera de esta lista es rechazada con `400 Bad Request`.
 
 ### CA3 — Intento de corregir envío finalizado
 
-- **Dado** que el envío está en `delivered` o `returned`
+- **Dado** que el envío está en `delivered`, `returned` o `cancelled`
 - **Cuando** supervisor intenta `PATCH /correct`
 - **Entonces** el servidor responde `400 Bad Request`
 

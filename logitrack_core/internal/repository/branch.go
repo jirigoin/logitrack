@@ -10,6 +10,7 @@ type BranchRepository interface {
 	List() []model.Branch
 	Add(branch model.Branch)
 	GetByID(id string) (model.Branch, bool)
+	GetByCity(city string) (model.Branch, bool)
 }
 
 type inMemoryBranchRepository struct {
@@ -40,6 +41,17 @@ func (r *inMemoryBranchRepository) GetByID(id string) (model.Branch, bool) {
 	defer r.mu.RUnlock()
 	for _, b := range r.branches {
 		if b.ID == id {
+			return b, true
+		}
+	}
+	return model.Branch{}, false
+}
+
+func (r *inMemoryBranchRepository) GetByCity(city string) (model.Branch, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, b := range r.branches {
+		if b.City == city {
 			return b, true
 		}
 	}

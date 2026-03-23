@@ -26,35 +26,40 @@ export function ShipmentList() {
   const navigate = useNavigate();
   const { hasRole } = useAuth();
 
-  const load = async (q?: string, from = dateFrom, to = dateTo) => {
+  const dateRangeInvalid = !!(dateFrom && dateTo && dateTo < dateFrom);
+
+  const load = async (q?: string) => {
     setLoading(true);
     try {
-      let data: Shipment[];
-      if (q) {
-        data = await shipmentApi.search(q);
-      } else {
-        const params: { date_from?: string; date_to?: string } = {};
-        if (from) params.date_from = from;
-        if (to) params.date_to = to;
-        data = await shipmentApi.list(Object.keys(params).length ? params : undefined);
-      }
+      const data = q ? await shipmentApi.search(q) : await shipmentApi.list();
       setShipments(data ?? []);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(undefined, dateFrom, dateTo); }, [dateFrom, dateTo]);
+  useEffect(() => { load(); }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     load(query.trim() || undefined);
   };
 
+  // Returns YYYY-MM-DD in local time for a given ISO timestamp
+  const localDate = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
   const filtered = shipments.filter((s) => {
-    if (statusFilter === "active") return s.status !== "delivered" && s.status !== "pending" && s.status !== "returned";
-    if (statusFilter === "") return true;
-    return s.status === statusFilter;
+    if (statusFilter === "active" && (s.status === "delivered" || s.status === "pending" || s.status === "returned" || s.status === "cancelled")) return false;
+    if (statusFilter !== "active" && statusFilter !== "" && s.status !== statusFilter) return false;
+    if (!dateRangeInvalid) {
+      const created = localDate(s.created_at);
+      if (dateFrom && created < dateFrom) return false;
+      if (dateTo && created > dateTo) return false;
+    }
+    return true;
   });
 
   return (
@@ -93,8 +98,14 @@ export function ShipmentList() {
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, color: "#374151" }}>
           To
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={selectStyle} />
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+            style={{ ...selectStyle, borderColor: dateRangeInvalid ? "#ef4444" : "#d1d5db" }} />
         </label>
+        {dateRangeInvalid && (
+          <span style={{ fontSize: 13, color: "#ef4444", alignSelf: "center" }}>
+            "To" date must be after "From"
+          </span>
+        )}
         {(dateFrom || dateTo) && (
           <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }}
             style={{ background: "#e5e7eb", border: "none", borderRadius: 6, padding: "8px 12px", cursor: "pointer", fontSize: 14 }}>
@@ -106,13 +117,14 @@ export function ShipmentList() {
           style={selectStyle}>
           <option value="active">Active</option>
           <option value="">All</option>
+          <option value="at_branch">At Branch</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="delivered">Delivered</option>
+          <option value="delivery_failed">Delivery Failed</option>
+          <option value="delivering">Delivering</option>
           <option value="pending">Draft</option>
           <option value="in_progress">In Progress</option>
           <option value="in_transit">In Transit</option>
-          <option value="at_branch">At Branch</option>
-          <option value="delivering">Delivering</option>
-          <option value="delivery_failed">Delivery Failed</option>
-          <option value="delivered">Delivered</option>
           <option value="ready_for_pickup">Ready for Pickup</option>
           <option value="ready_for_return">Ready for Return</option>
           <option value="returned">Returned</option>

@@ -29,6 +29,9 @@ El Supervisor es el rol operativo de mayor alcance sobre los envíos. Puede real
 | Editar borrador (`PATCH /shipments/:id/draft`)              | operator, supervisor, admin                    |
 | Confirmar borrador (`POST /shipments/:id/confirm`)          | operator, supervisor, admin                    |
 | Cambiar estado de un envío (`PATCH /shipments/:id/status`)  | supervisor, admin (driver con restricciones)   |
+| Cancelar un envío (`POST /shipments/:id/cancel`)            | supervisor, admin                              |
+| Corregir datos de un envío (`PATCH /shipments/:id/correct`) | supervisor, admin                              |
+| Agregar comentario a un envío                               | supervisor, admin                              |
 | Asignar chofer al mover a `delivering`                      | supervisor, admin                              |
 | Ver lista de choferes (`GET /users/drivers`)                | supervisor, admin                              |
 | Ver estadísticas / dashboard                                | supervisor, manager, admin                     |
@@ -165,6 +168,26 @@ En el estado actual el sistema tiene un único Supervisor hardcodeado. La gesti�
 - **Cuando** navega a `/dashboard`
 - **Entonces** ve el tablero con estadísticas de envíos
 - **Y** el enlace Dashboard es visible en la navegación
+
+### CA14 — Supervisor cancela un envío activo
+
+- **Dado** que el envío está en un estado intermedio (ej. `in_transit`)
+- **Cuando** el Supervisor hace `POST /cancel` con `{ "reason": "Cliente solicitó cancelación" }`
+- **Entonces** responde `200 OK` con `status: cancelled`
+- **Y** se registra un evento con `from_status: "in_transit"`, `to_status: "cancelled"`
+- **Y** se agrega un comentario automático: `[Cancelación] Cliente solicitó cancelación`
+
+### CA15 — Supervisor no puede cancelar un envío finalizado
+
+- **Dado** que el envío está en `delivered`, `returned` o `cancelled`
+- **Cuando** el Supervisor intenta `POST /cancel`
+- **Entonces** responde `400 Bad Request`
+
+### CA16 — Supervisor no puede cancelar un borrador
+
+- **Dado** que el envío está en `pending`
+- **Cuando** el Supervisor intenta `POST /cancel`
+- **Entonces** responde `400 Bad Request` (los borradores se eliminan, no se cancelan)
 
 ### CA13 — Supervisor ve auditoría completa de un envío
 

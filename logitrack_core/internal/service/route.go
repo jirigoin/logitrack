@@ -20,7 +20,7 @@ func NewRouteService(repo repository.RouteRepository, shipmentRepo repository.Sh
 }
 
 func (s *RouteService) GetTodayRoute(driverID string) (model.Route, []model.Shipment, error) {
-	today := time.Now().UTC().Format("2006-01-02")
+	today := model.NewDateOnly(time.Now().UTC())
 	route, err := s.repo.GetByDriverAndDate(driverID, today)
 	if err != nil {
 		return model.Route{}, nil, err
@@ -36,9 +36,13 @@ func (s *RouteService) GetTodayRoute(driverID string) (model.Route, []model.Ship
 }
 
 func (s *RouteService) Create(req model.CreateRouteRequest, createdBy string) (model.Route, error) {
+	t, err := time.Parse("2006-01-02", req.Date)
+	if err != nil {
+		return model.Route{}, fmt.Errorf("invalid date format, use YYYY-MM-DD")
+	}
 	route := model.Route{
 		ID:          generateRouteID(),
-		Date:        req.Date,
+		Date:        model.NewDateOnly(t),
 		DriverID:    req.DriverID,
 		ShipmentIDs: req.ShipmentIDs,
 		CreatedBy:   createdBy,
@@ -47,7 +51,7 @@ func (s *RouteService) Create(req model.CreateRouteRequest, createdBy string) (m
 	return s.repo.Create(route)
 }
 
-func (s *RouteService) AddShipmentToDriverRoute(driverID, trackingID, date string) error {
+func (s *RouteService) AddShipmentToDriverRoute(driverID, trackingID string, date model.DateOnly) error {
 	route, err := s.repo.GetByDriverAndDate(driverID, date)
 	if err != nil {
 		// No route yet for this driver today — create one
@@ -70,7 +74,7 @@ func (s *RouteService) AddShipmentToDriverRoute(driverID, trackingID, date strin
 }
 
 func (s *RouteService) ValidateDriverCanUpdateShipment(driverID, trackingID string, status model.Status) error {
-	today := time.Now().UTC().Format("2006-01-02")
+	today := model.NewDateOnly(time.Now().UTC())
 	route, err := s.repo.GetByDriverAndDate(driverID, today)
 	if err != nil {
 		return fmt.Errorf("no route assigned for today")

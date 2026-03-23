@@ -27,8 +27,8 @@ func main() {
 	commentRepo := repository.NewInMemoryCommentRepository()
 
 	// Services & handlers
-	shipmentSvc := service.NewShipmentService(shipmentRepo, branchRepo, customerRepo)
 	commentSvc := service.NewCommentService(commentRepo, shipmentRepo)
+	shipmentSvc := service.NewShipmentService(shipmentRepo, branchRepo, customerRepo, commentSvc)
 	routeSvc := service.NewRouteService(routeRepo, shipmentRepo)
 	shipmentHandler := handler.NewShipmentHandler(shipmentSvc, routeSvc, commentSvc)
 	commentHandler := handler.NewCommentHandler(commentSvc)
@@ -85,6 +85,9 @@ func main() {
 
 	// Correct shipment data (non-destructive) — supervisor, admin
 	protected.PATCH("/shipments/:tracking_id/correct", canComment, shipmentHandler.CorrectShipment)
+
+	// Cancel shipment — supervisor, admin
+	protected.POST("/shipments/:tracking_id/cancel", canComment, shipmentHandler.CancelShipment)
 
 	// Change status — supervisor, admin, driver (driver further restricted in handler)
 	canChangeStatus := middleware.RequireRoles(model.RoleSupervisor, model.RoleAdmin, model.RoleDriver)
