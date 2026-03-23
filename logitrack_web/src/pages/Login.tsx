@@ -73,7 +73,7 @@ export function Login() {
             { u: "supervisor", p: "supervisor123",  r: "Supervisor" },
             { u: "gerente",    p: "gerente123",     r: "Manager" },
             { u: "admin",      p: "admin123",       r: "Admin" },
-            { u: "chofer",     p: "chofer123",      r: "Chofer" },
+            { u: "chofer",     p: "chofer123",      r: "Driver" },
           ].map(({ u, p, r }) => (
             <div key={u} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0", cursor: "pointer" }}
               onClick={() => { setUsername(u); setPassword(p); }}>

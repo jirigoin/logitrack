@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/logitrack/core/internal/model"
+	"github.com/logitrack/core/internal/projection"
 	"github.com/logitrack/core/internal/repository"
 )
 
@@ -39,21 +40,23 @@ type eventSeed struct {
 
 func LoadBranches(repo repository.BranchRepository) {
 	branches := []model.Branch{
-		{ID: "caba", Name: "Buenos Aires — Ciudad de Buenos Aires", City: "Ciudad de Buenos Aires", Province: "Buenos Aires"},
-		{ID: "san-pedro", Name: "Buenos Aires — San Pedro", City: "San Pedro", Province: "Buenos Aires"},
-		{ID: "cordoba", Name: "Córdoba — Córdoba", City: "Córdoba", Province: "Córdoba"},
-		{ID: "mendoza", Name: "Mendoza — Mendoza", City: "Mendoza", Province: "Mendoza"},
-		{ID: "rio-gallegos", Name: "Santa Cruz — Río Gallegos", City: "Río Gallegos", Province: "Santa Cruz"},
-		{ID: "jujuy", Name: "Jujuy — San Salvador de Jujuy", City: "San Salvador de Jujuy", Province: "Jujuy"},
-		{ID: "posadas", Name: "Misiones — Posadas", City: "Posadas", Province: "Misiones"},
-		{ID: "ushuaia", Name: "Tierra del Fuego — Ushuaia", City: "Ushuaia", Province: "Tierra del Fuego"},
+		{ID: "caba", Name: "CDBA-01", City: "Ciudad de Buenos Aires", Province: "Buenos Aires"},
+		{ID: "san-pedro", Name: "SNPO-01", City: "San Pedro", Province: "Buenos Aires"},
+		{ID: "cordoba", Name: "CORD-01", City: "Córdoba", Province: "Córdoba"},
+		{ID: "mendoza", Name: "MEND-01", City: "Mendoza", Province: "Mendoza"},
+		{ID: "rio-gallegos", Name: "RIGL-01", City: "Río Gallegos", Province: "Santa Cruz"},
+		{ID: "jujuy", Name: "JUJY-01", City: "San Salvador de Jujuy", Province: "Jujuy"},
+		{ID: "posadas", Name: "POSA-01", City: "Posadas", Province: "Misiones"},
+		{ID: "ushuaia", Name: "USHU-01", City: "Ushuaia", Province: "Tierra del Fuego"},
 	}
 	for _, b := range branches {
 		repo.Add(b)
 	}
 }
 
-func Load(repo repository.ShipmentRepository, customerRepo repository.CustomerRepository) {
+// Load populates the event store with seed domain events, then rebuilds the projection.
+// Seed data is appended directly to the event store to allow precise timestamp control.
+func Load(store repository.EventStore, proj *projection.ShipmentProjection, customerRepo repository.CustomerRepository) {
 	now := time.Now().UTC()
 
 	seeds := []shipmentSeed{
@@ -131,7 +134,7 @@ func Load(repo repository.ShipmentRepository, customerRepo repository.CustomerRe
 			receivingBranchID: "jujuy",
 			events: []eventSeed{
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "jujuy", notes: "Shipment created", hoursAgo: 30},
-				{from: model.StatusInProgress, to: model.StatusInTransit, changedBy: "operator2", location: "jujuy", notes: "Picked up from sender", hoursAgo: 26},
+				{from: model.StatusInProgress, to: model.StatusInTransit, changedBy: "operator2", location: "posadas", notes: "Picked up from sender", hoursAgo: 26},
 			},
 		},
 		{
@@ -179,38 +182,38 @@ func Load(repo repository.ShipmentRepository, customerRepo repository.CustomerRe
 		{
 			trackingID:        "LT-DELIVER01",
 			senderName:        "Tech Store SA",
-			senderPhone:       "+54 9 11 5500-1122",
+			senderPhone:       "+54 9 3329 5500-1122",
 			senderDNI:         "20111222",
-			origin:            model.Address{Street: "Av. Rivadavia 3000", City: "Ciudad de Buenos Aires", Province: "Buenos Aires", PostalCode: "C1202"},
+			origin:            model.Address{Street: "Av. San Martín 150", City: "San Pedro", Province: "Buenos Aires", PostalCode: "B2930"},
 			recipientName:     "Marcela Suárez",
 			recipientPhone:    "+54 9 11 4433-2211",
 			recipientDNI:      "30123456",
 			destination:       model.Address{Street: "Larrea 1450", City: "Ciudad de Buenos Aires", Province: "Buenos Aires", PostalCode: "C1117"},
 			weightKg:          1.2,
 			packageType:       model.PackageBox,
-			receivingBranchID: "caba",
+			receivingBranchID: "san-pedro",
 			events: []eventSeed{
-				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "caba", notes: "Shipment created", hoursAgo: 24},
-				{from: model.StatusInProgress, to: model.StatusInTransit, changedBy: "operator1", location: "caba", notes: "Dispatched", hoursAgo: 20},
+				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "san-pedro", notes: "Shipment created", hoursAgo: 24},
+				{from: model.StatusInProgress, to: model.StatusInTransit, changedBy: "operator1", location: "san-pedro", notes: "Dispatched towards Buenos Aires", hoursAgo: 20},
 				{from: model.StatusInTransit, to: model.StatusAtBranch, changedBy: "operator2", location: "caba", notes: "Arrived at CABA branch — ready for delivery", hoursAgo: 8},
 			},
 		},
 		{
 			trackingID:        "LT-DELIVER02",
 			senderName:        "Librería El Quijote",
-			senderPhone:       "+54 9 11 7788-9900",
+			senderPhone:       "+54 9 351 7788-9900",
 			senderDNI:         "20333444",
-			origin:            model.Address{Street: "Florida 340", City: "Ciudad de Buenos Aires", Province: "Buenos Aires", PostalCode: "C1005"},
+			origin:            model.Address{Street: "Obispo Trejo 145", City: "Córdoba", Province: "Córdoba", PostalCode: "X5000"},
 			recipientName:     "Tomás Villanueva",
 			recipientPhone:    "+54 9 11 6655-4433",
 			recipientDNI:      "28456789",
 			destination:       model.Address{Street: "Av. Santa Fe 4500", City: "Ciudad de Buenos Aires", Province: "Buenos Aires", PostalCode: "C1425"},
 			weightKg:          0.8,
 			packageType:       model.PackageEnvelope,
-			receivingBranchID: "caba",
+			receivingBranchID: "cordoba",
 			events: []eventSeed{
-				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "caba", notes: "Shipment created", hoursAgo: 12},
-				{from: model.StatusInProgress, to: model.StatusInTransit, changedBy: "operator1", location: "caba", notes: "Dispatched", hoursAgo: 10},
+				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "cordoba", notes: "Shipment created", hoursAgo: 12},
+				{from: model.StatusInProgress, to: model.StatusInTransit, changedBy: "operator1", location: "cordoba", notes: "Dispatched towards Buenos Aires", hoursAgo: 10},
 				{from: model.StatusInTransit, to: model.StatusAtBranch, changedBy: "operator2", location: "caba", notes: "Arrived at CABA branch — ready for delivery", hoursAgo: 5},
 			},
 		},
@@ -235,31 +238,20 @@ func Load(repo repository.ShipmentRepository, customerRepo repository.CustomerRe
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "caba", notes: "Shipment created", hoursAgo: 120},
 				{from: model.StatusInProgress, to: model.StatusInTransit, changedBy: "operator1", location: "caba", notes: "Dispatched from origin warehouse", hoursAgo: 116},
 				{from: model.StatusInTransit, to: model.StatusAtBranch, changedBy: "operator2", location: "cordoba", notes: "Arrived at Córdoba hub — transfer to northern route", hoursAgo: 96},
-				{from: model.StatusAtBranch, to: model.StatusInTransit, changedBy: "operator2", location: "cordoba", notes: "Departed Córdoba towards Mendoza", hoursAgo: 90},
+				{from: model.StatusAtBranch, to: model.StatusInTransit, changedBy: "operator2", location: "mendoza", notes: "Departed Córdoba towards Mendoza", hoursAgo: 90},
 				{from: model.StatusInTransit, to: model.StatusAtBranch, changedBy: "operator3", location: "mendoza", notes: "Arrived at Mendoza branch — overnight hold", hoursAgo: 72},
-				{from: model.StatusAtBranch, to: model.StatusInTransit, changedBy: "operator3", location: "mendoza", notes: "Departed Mendoza towards Jujuy via Salta", hoursAgo: 48},
+				{from: model.StatusAtBranch, to: model.StatusInTransit, changedBy: "operator3", location: "jujuy", notes: "Departed Mendoza towards Jujuy via Salta", hoursAgo: 48},
 				{from: model.StatusInTransit, to: model.StatusAtBranch, changedBy: "operator4", location: "jujuy", notes: "Arrived at Jujuy branch — awaiting recipient confirmation", hoursAgo: 8},
 			},
 		},
 	}
 
 	for _, s := range seeds {
-		lastEvent := s.events[len(s.events)-1]
-		currentStatus := lastEvent.to
 		createdAt := now.Add(-time.Duration(s.events[0].hoursAgo) * time.Hour)
-
-		var deliveredAt *time.Time
-		if currentStatus == model.StatusDelivered {
-			t := now.Add(-time.Duration(lastEvent.hoursAgo) * time.Hour)
-			deliveredAt = &t
-		}
-
 		estimated := createdAt.AddDate(0, 0, 7)
 
-		// current_location stores the branch ID from the last event
-		currentLocation := lastEvent.location
-
-		shipment := model.Shipment{
+		// Build the initial shipment snapshot for the shipment_created event
+		initialShipment := model.Shipment{
 			TrackingID:          s.trackingID,
 			SenderName:          s.senderName,
 			SenderPhone:         s.senderPhone,
@@ -276,38 +268,48 @@ func Load(repo repository.ShipmentRepository, customerRepo repository.CustomerRe
 			IsFragile:           s.isFragile,
 			SpecialInstructions: s.specialInstr,
 			ReceivingBranchID:   s.receivingBranchID,
-			Status:              currentStatus,
-			CurrentLocation:     currentLocation,
+			Status:              model.StatusInProgress,
+			CurrentLocation:     s.events[0].location,
 			CreatedAt:           createdAt,
 			UpdatedAt:           createdAt,
 			EstimatedDeliveryAt: estimated,
-			DeliveredAt:         deliveredAt,
 		}
 
-		if _, err := repo.Create(shipment); err != nil {
-			continue
+		// Emit shipment_created event
+		createEvent := model.DomainEvent{
+			ID:         uuid.NewString(),
+			TrackingID: s.trackingID,
+			EventType:  model.EventShipmentCreated,
+			Payload:    model.ShipmentCreatedPayload{Shipment: initialShipment, Notes: s.events[0].notes},
+			ChangedBy:  s.events[0].changedBy,
+			Timestamp:  createdAt,
 		}
+		_ = store.Append(createEvent)
 
-		customerRepo.Upsert(model.Customer{DNI: s.senderDNI, Name: s.senderName, Phone: s.senderPhone, Email: s.senderEmail, Address: s.origin})
-		customerRepo.Upsert(model.Customer{DNI: s.recipientDNI, Name: s.recipientName, Phone: s.recipientPhone, Email: s.recipientEmail, Address: s.destination})
-
-		for _, ev := range s.events {
-			var fromStatus *model.Status
-			if ev.from != "" {
-				from := ev.from
-				fromStatus = &from
-			}
-			event := model.ShipmentEvent{
+		// Emit status_changed events for all subsequent event seeds
+		for _, ev := range s.events[1:] {
+			statusEvent := model.DomainEvent{
 				ID:         uuid.NewString(),
 				TrackingID: s.trackingID,
-				FromStatus: fromStatus,
-				ToStatus:   ev.to,
-				ChangedBy:  ev.changedBy,
-				Location:   ev.location,
-				Notes:      ev.notes,
-				Timestamp:  now.Add(-time.Duration(ev.hoursAgo) * time.Hour),
+				EventType:  model.EventStatusChanged,
+				Payload: model.StatusChangedPayload{
+					FromStatus: ev.from,
+					ToStatus:   ev.to,
+					Location:   ev.location,
+					Notes:      ev.notes,
+				},
+				ChangedBy: ev.changedBy,
+				Timestamp: now.Add(-time.Duration(ev.hoursAgo) * time.Hour),
 			}
-			_ = repo.AddEvent(event)
+			_ = store.Append(statusEvent)
 		}
+
+		// Upsert customers from this seed entry
+		customerRepo.Upsert(model.Customer{DNI: s.senderDNI, Name: s.senderName, Phone: s.senderPhone, Email: s.senderEmail, Address: s.origin})
+		customerRepo.Upsert(model.Customer{DNI: s.recipientDNI, Name: s.recipientName, Phone: s.recipientPhone, Email: s.recipientEmail, Address: s.destination})
 	}
+
+	// Rebuild projection from all appended events
+	allEvents, _ := store.LoadAll()
+	proj.Rebuild(allEvents)
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   shipmentApi,
@@ -13,6 +13,7 @@ import type { User } from "../api/auth";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import { branchApi, branchLabel, branchLabelById, type Branch } from "../api/branches";
+import { customerApi, type Customer } from "../api/customers";
 import { fmtDate, fmtDateTime } from "../utils/date";
 
 const TRANSITIONS: Record<ShipmentStatus, ShipmentStatus[]> = {
@@ -90,8 +91,8 @@ export function ShipmentDetail() {
         shipmentApi.getComments(trackingId),
       ]);
       setShipment(s);
-      setEvents(ev);
-      setComments(cmts);
+      setEvents(ev ?? []);
+      setComments(cmts ?? []);
       setNewStatus("");
       if (s.status === "pending") {
         setDraftForm({
@@ -435,7 +436,7 @@ export function ShipmentDetail() {
                 required
                 style={inputStyle}
               >
-                <option value="">Seleccionar chofer (requerido)</option>
+                <option value="">Select driver (required)</option>
                 {drivers.map((d) => (
                   <option key={d.id} value={d.id}>{d.username}</option>
                 ))}
@@ -468,11 +469,17 @@ export function ShipmentDetail() {
               ) : null;
             })()}
             <input value={notes} onChange={(e) => setNotes(e.target.value)}
-              placeholder={newStatus === "delivery_failed" ? "Motivo requerido (ej: Destinatario ausente)" : "Notes (optional)"}
+              placeholder={newStatus === "delivery_failed" ? "Reason required (e.g. Recipient not home)" : "Notes (optional)"}
               required={newStatus === "delivery_failed"}
               style={inputStyle} />
             {newStatus === "delivery_failed" && !notes.trim() && (
-              <p style={{ margin: 0, fontSize: 12, color: "#dc2626" }}>El motivo es obligatorio para intento fallido.</p>
+              <p style={{ margin: 0, fontSize: 12, color: "#dc2626" }}>A reason is required for a failed delivery attempt.</p>
+            )}
+            {newStatus === "delivered" && !recipientDni.trim() && (
+              <p style={{ margin: 0, fontSize: 12, color: "#dc2626" }}>Recipient DNI is required to mark as delivered.</p>
+            )}
+            {newStatus === "returned" && !senderDni.trim() && (
+              <p style={{ margin: 0, fontSize: 12, color: "#dc2626" }}>Sender DNI is required to register the return.</p>
             )}
             {updateError && <p style={{ color: "#ef4444", margin: 0, fontSize: 13 }}>{updateError}</p>}
             <button type="submit"
@@ -484,10 +491,10 @@ export function ShipmentDetail() {
                 (newStatus === "returned" && !senderDni.trim())
               }
               style={{
-                background: (newStatus && !(newStatus === "delivery_failed" && !notes.trim()) && !(newStatus === "delivering" && !selectedDriverId)) ? "#1e3a5f" : "#e5e7eb",
-                color: (newStatus && !(newStatus === "delivery_failed" && !notes.trim()) && !(newStatus === "delivering" && !selectedDriverId)) ? "#fff" : "#9ca3af",
+                background: (newStatus && !updating && !(newStatus === "delivery_failed" && !notes.trim()) && !(newStatus === "delivering" && !selectedDriverId) && !(newStatus === "delivered" && !recipientDni.trim()) && !(newStatus === "returned" && !senderDni.trim())) ? "#1e3a5f" : "#e5e7eb",
+                color: (newStatus && !updating && !(newStatus === "delivery_failed" && !notes.trim()) && !(newStatus === "delivering" && !selectedDriverId) && !(newStatus === "delivered" && !recipientDni.trim()) && !(newStatus === "returned" && !senderDni.trim())) ? "#fff" : "#9ca3af",
                 border: "none", borderRadius: 6, padding: "8px 16px",
-                cursor: (newStatus && !(newStatus === "delivery_failed" && !notes.trim()) && !(newStatus === "delivering" && !selectedDriverId)) ? "pointer" : "default",
+                cursor: (newStatus && !updating && !(newStatus === "delivery_failed" && !notes.trim()) && !(newStatus === "delivering" && !selectedDriverId) && !(newStatus === "delivered" && !recipientDni.trim()) && !(newStatus === "returned" && !senderDni.trim())) ? "pointer" : "default",
                 fontWeight: 600, alignSelf: "start",
               }}>
               {updating ? "Updating..." : "Confirm Update"}
@@ -527,9 +534,14 @@ export function ShipmentDetail() {
                   </span>
                   <span style={{ color: "#9ca3af" }}>{fmt(ev.timestamp)}</span>
                 </div>
-                <div style={{ color: "#6b7280", display: "flex", gap: 16 }}>
+                <div style={{ color: "#6b7280", display: "flex", gap: 16, flexWrap: "wrap" as const }}>
                   <span>by <strong>{ev.changed_by || "system"}</strong></span>
-                  {ev.location && <span>📍 {branchLabel(ev.location, branches)}</span>}
+                  {ev.location && (() => {
+                    const b = branches.find(x => x.id === ev.location);
+                    return (
+                      <span>📍 <strong>{b?.name ?? ev.location}</strong>{b && <> · {b.city} · <span style={{ color: "#9ca3af" }}>{b.province}</span></>}</span>
+                    );
+                  })()}
                 </div>
                 {ev.notes && <p style={{ margin: "4px 0 0", color: "#4b5563" }}>{ev.notes}</p>}
               </div>
@@ -651,6 +663,39 @@ const PACKAGE_TYPES = [
   { value: "pallet",   label: "Pallet" },
 ];
 
+function CustomerSuggestion({ customer, onApply, onDismiss }: { customer: Customer; onApply: () => void; onDismiss: () => void }) {
+  return (
+    <div style={{
+      position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 50,
+      border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: 8,
+      padding: "10px 12px", display: "flex", justifyContent: "space-between",
+      alignItems: "center", gap: 12, boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+    }}>
+      <div style={{ fontSize: 13, color: "#1e40af", lineHeight: 1.5, minWidth: 0 }}>
+        <span style={{ fontWeight: 700 }}>{customer.name}</span>
+        <span style={{ color: "#6b7280", margin: "0 6px" }}>·</span>
+        <span>{customer.phone}</span>
+        {customer.address.city && (
+          <>
+            <span style={{ color: "#6b7280", margin: "0 6px" }}>·</span>
+            <span>{customer.address.city}, {customer.address.province}</span>
+          </>
+        )}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        <button type="button" onClick={onApply}
+          style={{ background: "#1e40af", color: "#fff", border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+          Usar datos
+        </button>
+        <button type="button" onClick={onDismiss}
+          style={{ background: "none", color: "#6b7280", border: "1px solid #d1d5db", borderRadius: 6, padding: "5px 10px", cursor: "pointer", fontSize: 12 }}>
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, saveError, confirmError, createdAt }: {
   form: SaveDraftPayload;
   onChange: (f: SaveDraftPayload) => void;
@@ -667,6 +712,69 @@ function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, 
     onChange({ ...form, [side]: { ...((form[side] as object) ?? {}), [field]: value } });
   const addr = (side: "origin" | "destination") => (form[side] ?? {}) as Record<string, string>;
 
+  const [senderSuggestion, setSenderSuggestion] = useState<Customer | null>(null);
+  const [recipientSuggestion, setRecipientSuggestion] = useState<Customer | null>(null);
+  const senderDNITimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recipientDNITimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSenderDNI = (dni: string) => {
+    set("sender_dni", dni);
+    setSenderSuggestion(null);
+    if (senderDNITimer.current) clearTimeout(senderDNITimer.current);
+    if (dni.length >= 7) {
+      senderDNITimer.current = setTimeout(async () => {
+        const customer = await customerApi.getByDNI(dni);
+        if (customer) setSenderSuggestion(customer);
+      }, 400);
+    }
+  };
+
+  const applySenderSuggestion = () => {
+    if (!senderSuggestion) return;
+    onChange({
+      ...form,
+      sender_name: senderSuggestion.name,
+      sender_phone: senderSuggestion.phone,
+      sender_email: senderSuggestion.email ?? form.sender_email,
+      origin: {
+        street: senderSuggestion.address.street ?? addr("origin").street,
+        city: senderSuggestion.address.city || addr("origin").city,
+        province: senderSuggestion.address.province || addr("origin").province,
+        postal_code: senderSuggestion.address.postal_code ?? addr("origin").postal_code,
+      },
+    });
+    setSenderSuggestion(null);
+  };
+
+  const handleRecipientDNI = (dni: string) => {
+    set("recipient_dni", dni);
+    setRecipientSuggestion(null);
+    if (recipientDNITimer.current) clearTimeout(recipientDNITimer.current);
+    if (dni.length >= 7) {
+      recipientDNITimer.current = setTimeout(async () => {
+        const customer = await customerApi.getByDNI(dni);
+        if (customer) setRecipientSuggestion(customer);
+      }, 400);
+    }
+  };
+
+  const applyRecipientSuggestion = () => {
+    if (!recipientSuggestion) return;
+    onChange({
+      ...form,
+      recipient_name: recipientSuggestion.name,
+      recipient_phone: recipientSuggestion.phone,
+      recipient_email: recipientSuggestion.email ?? form.recipient_email,
+      destination: {
+        street: recipientSuggestion.address.street ?? addr("destination").street,
+        city: recipientSuggestion.address.city || addr("destination").city,
+        province: recipientSuggestion.address.province || addr("destination").province,
+        postal_code: recipientSuggestion.address.postal_code ?? addr("destination").postal_code,
+      },
+    });
+    setRecipientSuggestion(null);
+  };
+
   return (
     <div style={{ display: "grid", gap: 16, marginBottom: 16 }}>
       <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>Created: {createdAt}</p>
@@ -678,7 +786,10 @@ function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, 
           <DField label="Name"><input style={inp} value={form.sender_name ?? ""} onChange={(e) => set("sender_name", e.target.value)} placeholder="Carlos Mendez" /></DField>
           <DField label="Phone"><input style={inp} value={form.sender_phone ?? ""} onChange={(e) => set("sender_phone", e.target.value)} placeholder="+54 9 11 1234-5678" /></DField>
           <DField label="Email"><input style={inp} type="email" value={form.sender_email ?? ""} onChange={(e) => set("sender_email", e.target.value)} placeholder="optional" /></DField>
-          <DField label="DNI"><input style={inp} value={form.sender_dni ?? ""} onChange={(e) => set("sender_dni", e.target.value)} placeholder="e.g. 30123456" /></DField>
+          <DField label="DNI">
+            <input style={inp} value={form.sender_dni ?? ""} onChange={(e) => handleSenderDNI(e.target.value)} placeholder="e.g. 30123456" />
+            {senderSuggestion && <CustomerSuggestion customer={senderSuggestion} onApply={applySenderSuggestion} onDismiss={() => setSenderSuggestion(null)} />}
+          </DField>
           <DField label="Street"><input style={inp} value={addr("origin").street ?? ""} onChange={(e) => setAddr("origin", "street", e.target.value)} placeholder="Av. Corrientes 1234" /></DField>
           <DField label="City *"><input style={inp} value={addr("origin").city ?? ""} onChange={(e) => setAddr("origin", "city", e.target.value)} placeholder="Buenos Aires" /></DField>
           <DField label="Province *">
@@ -698,7 +809,10 @@ function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, 
           <DField label="Name"><input style={inp} value={form.recipient_name ?? ""} onChange={(e) => set("recipient_name", e.target.value)} placeholder="Laura Gomez" /></DField>
           <DField label="Phone"><input style={inp} value={form.recipient_phone ?? ""} onChange={(e) => set("recipient_phone", e.target.value)} placeholder="+54 9 351 678-4321" /></DField>
           <DField label="Email"><input style={inp} type="email" value={form.recipient_email ?? ""} onChange={(e) => set("recipient_email", e.target.value)} placeholder="optional" /></DField>
-          <DField label="DNI"><input style={inp} value={form.recipient_dni ?? ""} onChange={(e) => set("recipient_dni", e.target.value)} placeholder="e.g. 28456789" /></DField>
+          <DField label="DNI">
+            <input style={inp} value={form.recipient_dni ?? ""} onChange={(e) => handleRecipientDNI(e.target.value)} placeholder="e.g. 28456789" />
+            {recipientSuggestion && <CustomerSuggestion customer={recipientSuggestion} onApply={applyRecipientSuggestion} onDismiss={() => setRecipientSuggestion(null)} />}
+          </DField>
           <DField label="Street"><input style={inp} value={addr("destination").street ?? ""} onChange={(e) => setAddr("destination", "street", e.target.value)} placeholder="San Martín 456" /></DField>
           <DField label="City *"><input style={inp} value={addr("destination").city ?? ""} onChange={(e) => setAddr("destination", "city", e.target.value)} placeholder="Córdoba" /></DField>
           <DField label="Province *">
@@ -760,7 +874,7 @@ function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, 
 
 function DField({ label, children, style }: { label: string; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ display: "grid", gap: 4, ...style }}>
+    <div style={{ display: "grid", gap: 4, position: "relative", ...style }}>
       <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>{label}</label>
       {children}
     </div>
@@ -781,7 +895,7 @@ function RouteTimeline({ events, origin, receivingBranchId, destination, branche
   if (events.length === 0) return null;
 
   const receivingBranch = receivingBranchId ? branches.find((b) => b.id === receivingBranchId) : undefined;
-  const firstStop = receivingBranch ? receivingBranch.city : origin;
+  const firstStop = receivingBranch ? receivingBranch.id : origin;
 
   // Confirmed stops: receiving branch (or origin fallback) + each at_branch arrival
   const stops: { location: string; status: ShipmentStatus; timestamp: string; current: boolean }[] = [];
@@ -833,11 +947,10 @@ function RouteTimeline({ events, origin, receivingBranchId, destination, branche
               </div>
               <div style={{ textAlign: "center" as const, maxWidth: 80 }}>
                 {(() => {
-                  const b = branches.find(x => x.city === stop.location);
-                  return <>
-                    <div style={{ fontSize: 11, fontWeight: stop.current ? 700 : 500, color: stop.current ? "#1e3a5f" : "#6b7280", whiteSpace: "nowrap" as const }}>{b?.city ?? stop.location}</div>
-                    {b?.province && <div style={{ fontSize: 10, color: "#9ca3af", whiteSpace: "nowrap" as const }}>{b.province}</div>}
-                  </>;
+                  const b = branches.find(x => x.id === stop.location);
+                  return (
+                    <div style={{ fontSize: 11, fontWeight: stop.current ? 700 : 500, color: stop.current ? "#1e3a5f" : "#6b7280", whiteSpace: "nowrap" as const }}>{b?.name ?? stop.location}</div>
+                  );
                 })()}
                 <div style={{ fontSize: 10, color: "#9ca3af" }}>{fmtDate(stop.timestamp)}</div>
               </div>
@@ -869,11 +982,10 @@ function RouteTimeline({ events, origin, receivingBranchId, destination, branche
               </div>
               <div style={{ textAlign: "center" as const, maxWidth: 80 }}>
                 {(() => {
-                  const b = branches.find(x => x.city === nextBranch);
-                  return <>
-                    <div style={{ fontSize: 11, color: "#9ca3af", whiteSpace: "nowrap" as const }}>{b?.city ?? nextBranch}</div>
-                    {b?.province && <div style={{ fontSize: 10, color: "#d1d5db", whiteSpace: "nowrap" as const }}>{b.province}</div>}
-                  </>;
+                  const b = branches.find(x => x.id === nextBranch);
+                  return (
+                    <div style={{ fontSize: 11, color: "#9ca3af", whiteSpace: "nowrap" as const }}>{b?.name ?? nextBranch}</div>
+                  );
                 })()}
               </div>
             </div>

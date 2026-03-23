@@ -7,26 +7,84 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/logitrack/core/internal/model"
 )
 
+// ShipmentRepository is the domain interface for shipment persistence.
+// Each write method accepts a command struct that carries all the data needed
+// to build the corresponding domain event internally.
 type ShipmentRepository interface {
-	Create(shipment model.Shipment) (model.Shipment, error)
+	// Writes — each method persists the corresponding domain event internally.
+	Create(cmd CreateShipmentCmd) (model.Shipment, error)
+	SaveDraft(cmd SaveDraftCmd) (model.Shipment, error)
+	UpdateDraft(cmd UpdateDraftCmd) (model.Shipment, error)
+	ConfirmDraft(cmd ConfirmDraftCmd) (model.Shipment, error)
+	UpdateStatus(cmd StatusUpdateCmd) (model.Shipment, error)
+	ApplyCorrections(cmd CorrectCmd) (model.Shipment, error)
+	CancelShipment(cmd CancelCmd) (model.Shipment, error)
+
+	// Reads
 	GetByTrackingID(trackingID string) (model.Shipment, error)
-	UpdateStatus(trackingID string, status model.Status) (model.Shipment, error)
-	UpdateLocation(trackingID string, location string) error
-	SetDeliveredAt(trackingID string, t time.Time) error
-	// ConfirmShipment promotes a draft: replaces the draft key with the real trackingID.
-	ConfirmShipment(draftID string, trackingID string, status model.Status) (model.Shipment, error)
-	UpdateDraft(shipment model.Shipment) (model.Shipment, error)
-	ApplyCorrections(trackingID string, corrections model.ShipmentCorrections) (model.Shipment, error)
 	List(filter model.ShipmentFilter) ([]model.Shipment, error)
 	Search(query string) ([]model.Shipment, error)
-	AddEvent(event model.ShipmentEvent) error
 	GetEvents(trackingID string) ([]model.ShipmentEvent, error)
 	Stats() (model.Stats, error)
 }
 
+// Command structs — carry all data the repo needs to persist an event.
+
+type CreateShipmentCmd struct {
+	Shipment  model.Shipment
+	ChangedBy string
+	Notes     string
+}
+
+type SaveDraftCmd struct {
+	Shipment model.Shipment
+}
+
+type UpdateDraftCmd struct {
+	Shipment model.Shipment
+}
+
+type ConfirmDraftCmd struct {
+	DraftID       string
+	NewTrackingID string
+	ChangedBy     string
+	Notes         string
+	Timestamp     time.Time
+}
+
+type StatusUpdateCmd struct {
+	TrackingID string
+	FromStatus model.Status
+	ToStatus   model.Status
+	Location   string // already resolved to branch ID
+	ChangedBy  string
+	Notes      string
+	DriverID   string
+	Timestamp  time.Time
+}
+
+type CorrectCmd struct {
+	TrackingID  string
+	Username    string
+	Status      model.Status // current status (unchanged)
+	Corrections model.ShipmentCorrections
+	Timestamp   time.Time
+}
+
+type CancelCmd struct {
+	TrackingID string
+	Username   string
+	Reason     string
+	FromStatus model.Status
+	Timestamp  time.Time
+}
+
+// inMemoryShipmentRepository is a simple in-memory adapter that mutates state directly.
+// It stores ShipmentEvent objects for GetEvents compatibility.
 type inMemoryShipmentRepository struct {
 	mu        sync.RWMutex
 	shipments map[string]model.Shipment
@@ -40,11 +98,162 @@ func NewInMemoryShipmentRepository() ShipmentRepository {
 	}
 }
 
-func (r *inMemoryShipmentRepository) Create(shipment model.Shipment) (model.Shipment, error) {
+func (r *inMemoryShipmentRepository) Create(cmd CreateShipmentCmd) (model.Shipment, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.shipments[shipment.TrackingID] = shipment
-	r.events[shipment.TrackingID] = []model.ShipmentEvent{}
+	r.shipments[cmd.Shipment.TrackingID] = cmd.Shipment
+	event := model.ShipmentEvent{
+		ID:         uuid.NewString(),
+		TrackingID: cmd.Shipment.TrackingID,
+		ToStatus:   model.StatusInProgress,
+		ChangedBy:  cmd.ChangedBy,
+		Notes:      cmd.Notes,
+		Timestamp:  cmd.Shipment.CreatedAt,
+	}
+	r.events[cmd.Shipment.TrackingID] = []model.ShipmentEvent{event}
+	return cmd.Shipment, nil
+}
+
+func (r *inMemoryShipmentRepository) SaveDraft(cmd SaveDraftCmd) (model.Shipment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.shipments[cmd.Shipment.TrackingID] = cmd.Shipment
+	r.events[cmd.Shipment.TrackingID] = []model.ShipmentEvent{}
+	return cmd.Shipment, nil
+}
+
+func (r *inMemoryShipmentRepository) UpdateDraft(cmd UpdateDraftCmd) (model.Shipment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, ok := r.shipments[cmd.Shipment.TrackingID]
+	if !ok {
+		return model.Shipment{}, fmt.Errorf("shipment not found")
+	}
+	if existing.Status != model.StatusPending {
+		return model.Shipment{}, fmt.Errorf("only draft shipments can be updated")
+	}
+	r.shipments[cmd.Shipment.TrackingID] = cmd.Shipment
+	return cmd.Shipment, nil
+}
+
+func (r *inMemoryShipmentRepository) ConfirmDraft(cmd ConfirmDraftCmd) (model.Shipment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	shipment, ok := r.shipments[cmd.DraftID]
+	if !ok {
+		return model.Shipment{}, fmt.Errorf("shipment not found")
+	}
+	shipment.TrackingID = cmd.NewTrackingID
+	shipment.Status = model.StatusInProgress
+	shipment.UpdatedAt = cmd.Timestamp
+	delete(r.shipments, cmd.DraftID)
+	r.shipments[cmd.NewTrackingID] = shipment
+
+	// Migrate events to new key
+	draftEvents := r.events[cmd.DraftID]
+	for i := range draftEvents {
+		draftEvents[i].TrackingID = cmd.NewTrackingID
+	}
+	delete(r.events, cmd.DraftID)
+
+	from := model.StatusPending
+	confirmEvent := model.ShipmentEvent{
+		ID:         uuid.NewString(),
+		TrackingID: cmd.NewTrackingID,
+		FromStatus: &from,
+		ToStatus:   model.StatusInProgress,
+		ChangedBy:  cmd.ChangedBy,
+		Notes:      cmd.Notes,
+		Timestamp:  cmd.Timestamp,
+	}
+	r.events[cmd.NewTrackingID] = append(draftEvents, confirmEvent)
+	return shipment, nil
+}
+
+func (r *inMemoryShipmentRepository) UpdateStatus(cmd StatusUpdateCmd) (model.Shipment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	shipment, ok := r.shipments[cmd.TrackingID]
+	if !ok {
+		return model.Shipment{}, fmt.Errorf("shipment not found")
+	}
+	shipment.Status = cmd.ToStatus
+	shipment.UpdatedAt = cmd.Timestamp
+	if cmd.Location != "" && cmd.ToStatus != model.StatusDelivered {
+		shipment.CurrentLocation = cmd.Location
+	}
+	if cmd.ToStatus == model.StatusDelivered {
+		t := cmd.Timestamp
+		shipment.DeliveredAt = &t
+	}
+	r.shipments[cmd.TrackingID] = shipment
+
+	from := cmd.FromStatus
+	event := model.ShipmentEvent{
+		ID:         uuid.NewString(),
+		TrackingID: cmd.TrackingID,
+		FromStatus: &from,
+		ToStatus:   cmd.ToStatus,
+		ChangedBy:  cmd.ChangedBy,
+		Location:   cmd.Location,
+		Notes:      cmd.Notes,
+		Timestamp:  cmd.Timestamp,
+	}
+	r.events[cmd.TrackingID] = append(r.events[cmd.TrackingID], event)
+	return shipment, nil
+}
+
+func (r *inMemoryShipmentRepository) ApplyCorrections(cmd CorrectCmd) (model.Shipment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	shipment, ok := r.shipments[cmd.TrackingID]
+	if !ok {
+		return model.Shipment{}, fmt.Errorf("shipment not found")
+	}
+	if shipment.Corrections == nil {
+		shipment.Corrections = &model.ShipmentCorrections{}
+	}
+	shipment.Corrections.Merge(cmd.Corrections)
+	shipment.UpdatedAt = cmd.Timestamp
+	r.shipments[cmd.TrackingID] = shipment
+
+	from := cmd.Status
+	event := model.ShipmentEvent{
+		ID:         uuid.NewString(),
+		TrackingID: cmd.TrackingID,
+		EventType:  "edited",
+		FromStatus: &from,
+		ToStatus:   cmd.Status,
+		ChangedBy:  cmd.Username,
+		Notes:      fmt.Sprintf("Data correction: %d field(s) updated", len(cmd.Corrections.Fields())),
+		Timestamp:  cmd.Timestamp,
+	}
+	r.events[cmd.TrackingID] = append(r.events[cmd.TrackingID], event)
+	return shipment, nil
+}
+
+func (r *inMemoryShipmentRepository) CancelShipment(cmd CancelCmd) (model.Shipment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	shipment, ok := r.shipments[cmd.TrackingID]
+	if !ok {
+		return model.Shipment{}, fmt.Errorf("shipment not found")
+	}
+	shipment.Status = model.StatusCancelled
+	shipment.UpdatedAt = cmd.Timestamp
+	r.shipments[cmd.TrackingID] = shipment
+
+	from := cmd.FromStatus
+	event := model.ShipmentEvent{
+		ID:         uuid.NewString(),
+		TrackingID: cmd.TrackingID,
+		FromStatus: &from,
+		ToStatus:   model.StatusCancelled,
+		ChangedBy:  cmd.Username,
+		Notes:      cmd.Reason,
+		Timestamp:  cmd.Timestamp,
+	}
+	r.events[cmd.TrackingID] = append(r.events[cmd.TrackingID], event)
 	return shipment, nil
 }
 
@@ -55,92 +264,6 @@ func (r *inMemoryShipmentRepository) GetByTrackingID(trackingID string) (model.S
 	if !ok {
 		return model.Shipment{}, fmt.Errorf("shipment not found")
 	}
-	return shipment, nil
-}
-
-func (r *inMemoryShipmentRepository) UpdateStatus(trackingID string, status model.Status) (model.Shipment, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	shipment, ok := r.shipments[trackingID]
-	if !ok {
-		return model.Shipment{}, fmt.Errorf("shipment not found")
-	}
-	shipment.Status = status
-	r.shipments[trackingID] = shipment
-	return shipment, nil
-}
-
-func (r *inMemoryShipmentRepository) UpdateLocation(trackingID string, location string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	shipment, ok := r.shipments[trackingID]
-	if !ok {
-		return fmt.Errorf("shipment not found")
-	}
-	shipment.CurrentLocation = location
-	r.shipments[trackingID] = shipment
-	return nil
-}
-
-func (r *inMemoryShipmentRepository) SetDeliveredAt(trackingID string, t time.Time) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	shipment, ok := r.shipments[trackingID]
-	if !ok {
-		return fmt.Errorf("shipment not found")
-	}
-	shipment.DeliveredAt = &t
-	r.shipments[trackingID] = shipment
-	return nil
-}
-
-func (r *inMemoryShipmentRepository) UpdateDraft(shipment model.Shipment) (model.Shipment, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	existing, ok := r.shipments[shipment.TrackingID]
-	if !ok {
-		return model.Shipment{}, fmt.Errorf("shipment not found")
-	}
-	if existing.Status != model.StatusPending {
-		return model.Shipment{}, fmt.Errorf("only draft shipments can be updated")
-	}
-	r.shipments[shipment.TrackingID] = shipment
-	return shipment, nil
-}
-
-func (r *inMemoryShipmentRepository) ConfirmShipment(draftID string, trackingID string, status model.Status) (model.Shipment, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	shipment, ok := r.shipments[draftID]
-	if !ok {
-		return model.Shipment{}, fmt.Errorf("shipment not found")
-	}
-	shipment.TrackingID = trackingID
-	shipment.Status = status
-	delete(r.shipments, draftID)
-	r.shipments[trackingID] = shipment
-	// Move events to new key, updating each event's TrackingID
-	events := r.events[draftID]
-	for i := range events {
-		events[i].TrackingID = trackingID
-	}
-	delete(r.events, draftID)
-	r.events[trackingID] = events
-	return shipment, nil
-}
-
-func (r *inMemoryShipmentRepository) ApplyCorrections(trackingID string, corrections model.ShipmentCorrections) (model.Shipment, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	shipment, ok := r.shipments[trackingID]
-	if !ok {
-		return model.Shipment{}, fmt.Errorf("shipment not found")
-	}
-	if shipment.Corrections == nil {
-		shipment.Corrections = &model.ShipmentCorrections{}
-	}
-	shipment.Corrections.Merge(corrections)
-	r.shipments[trackingID] = shipment
 	return shipment, nil
 }
 
@@ -181,13 +304,6 @@ func (r *inMemoryShipmentRepository) Search(query string) ([]model.Shipment, err
 		return result[i].TrackingID < result[j].TrackingID
 	})
 	return result, nil
-}
-
-func (r *inMemoryShipmentRepository) AddEvent(event model.ShipmentEvent) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.events[event.TrackingID] = append(r.events[event.TrackingID], event)
-	return nil
 }
 
 func (r *inMemoryShipmentRepository) GetEvents(trackingID string) ([]model.ShipmentEvent, error) {

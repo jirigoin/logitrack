@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -9,6 +10,25 @@ import (
 	"github.com/logitrack/core/internal/model"
 	"github.com/logitrack/core/internal/repository"
 )
+
+var (
+	reDNI   = regexp.MustCompile(`^\d+$`)
+	reEmail = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+)
+
+func validateDNI(dni, field string) error {
+	if !reDNI.MatchString(dni) {
+		return fmt.Errorf("%s must contain only digits", field)
+	}
+	return nil
+}
+
+func validateEmail(email, field string) error {
+	if !reEmail.MatchString(email) {
+		return fmt.Errorf("%s is not a valid email address", field)
+	}
+	return nil
+}
 
 type ShipmentService struct {
 	repo         repository.ShipmentRepository
@@ -63,6 +83,22 @@ func (s *ShipmentService) Create(req model.CreateShipmentRequest) (model.Shipmen
 	if strings.TrimSpace(req.Destination.City) == "" || strings.TrimSpace(req.Destination.Province) == "" {
 		return model.Shipment{}, fmt.Errorf("destination city and province are required")
 	}
+	if err := validateDNI(req.SenderDNI, "sender_dni"); err != nil {
+		return model.Shipment{}, err
+	}
+	if err := validateDNI(req.RecipientDNI, "recipient_dni"); err != nil {
+		return model.Shipment{}, err
+	}
+	if req.SenderEmail != "" {
+		if err := validateEmail(req.SenderEmail, "sender_email"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if req.RecipientEmail != "" {
+		if err := validateEmail(req.RecipientEmail, "recipient_email"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
 	now := time.Now().UTC()
 	currentLocation := s.locationToBranchID(req.Origin.City)
 	if b, ok := s.branchRepo.GetByID(req.ReceivingBranchID); ok {
@@ -91,24 +127,39 @@ func (s *ShipmentService) Create(req model.CreateShipmentRequest) (model.Shipmen
 		UpdatedAt:           now,
 		EstimatedDeliveryAt: now.AddDate(0, 0, 7),
 	}
-	created, err := s.repo.Create(shipment)
+	created, err := s.repo.Create(repository.CreateShipmentCmd{
+		Shipment:  shipment,
+		ChangedBy: req.CreatedBy,
+		Notes:     "Shipment created",
+	})
 	if err != nil {
 		return model.Shipment{}, err
 	}
-	event := model.ShipmentEvent{
-		ID:         uuid.NewString(),
-		TrackingID: created.TrackingID,
-		ToStatus:   model.StatusInProgress,
-		ChangedBy:  req.CreatedBy,
-		Notes:      "Shipment created",
-		Timestamp:  now,
-	}
-	_ = s.repo.AddEvent(event)
 	s.upsertParties(created)
 	return created, nil
 }
 
 func (s *ShipmentService) SaveDraft(req model.SaveDraftRequest) (model.Shipment, error) {
+	if req.SenderDNI != "" {
+		if err := validateDNI(req.SenderDNI, "sender_dni"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if req.RecipientDNI != "" {
+		if err := validateDNI(req.RecipientDNI, "recipient_dni"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if req.SenderEmail != "" {
+		if err := validateEmail(req.SenderEmail, "sender_email"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if req.RecipientEmail != "" {
+		if err := validateEmail(req.RecipientEmail, "recipient_email"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
 	now := time.Now().UTC()
 	currentLocation := s.locationToBranchID(req.Origin.City)
 	if b, ok := s.branchRepo.GetByID(req.ReceivingBranchID); ok {
@@ -137,14 +188,30 @@ func (s *ShipmentService) SaveDraft(req model.SaveDraftRequest) (model.Shipment,
 		UpdatedAt:           now,
 		EstimatedDeliveryAt: now.AddDate(0, 0, 7),
 	}
-	created, err := s.repo.Create(shipment)
-	if err != nil {
-		return model.Shipment{}, err
-	}
-	return created, nil
+	return s.repo.SaveDraft(repository.SaveDraftCmd{Shipment: shipment})
 }
 
 func (s *ShipmentService) UpdateDraft(draftID string, req model.SaveDraftRequest) (model.Shipment, error) {
+	if req.SenderDNI != "" {
+		if err := validateDNI(req.SenderDNI, "sender_dni"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if req.RecipientDNI != "" {
+		if err := validateDNI(req.RecipientDNI, "recipient_dni"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if req.SenderEmail != "" {
+		if err := validateEmail(req.SenderEmail, "sender_email"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if req.RecipientEmail != "" {
+		if err := validateEmail(req.RecipientEmail, "recipient_email"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
 	existing, err := s.repo.GetByTrackingID(draftID)
 	if err != nil {
 		return model.Shipment{}, err
@@ -176,7 +243,7 @@ func (s *ShipmentService) UpdateDraft(draftID string, req model.SaveDraftRequest
 	} else if req.Origin.City != "" {
 		existing.CurrentLocation = s.locationToBranchID(req.Origin.City)
 	}
-	return s.repo.UpdateDraft(existing)
+	return s.repo.UpdateDraft(repository.UpdateDraftCmd{Shipment: existing})
 }
 
 func (s *ShipmentService) ConfirmDraft(draftID string, changedBy string) (model.Shipment, error) {
@@ -222,23 +289,32 @@ func (s *ShipmentService) ConfirmDraft(draftID string, changedBy string) (model.
 	if len(missing) > 0 {
 		return model.Shipment{}, fmt.Errorf("missing required fields: %s", strings.Join(missing, ", "))
 	}
-	trackingID := generateTrackingID()
-	confirmed, err := s.repo.ConfirmShipment(draftID, trackingID, model.StatusInProgress)
+	if err := validateDNI(draft.SenderDNI, "sender_dni"); err != nil {
+		return model.Shipment{}, err
+	}
+	if err := validateDNI(draft.RecipientDNI, "recipient_dni"); err != nil {
+		return model.Shipment{}, err
+	}
+	if draft.SenderEmail != "" {
+		if err := validateEmail(draft.SenderEmail, "sender_email"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if draft.RecipientEmail != "" {
+		if err := validateEmail(draft.RecipientEmail, "recipient_email"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	confirmed, err := s.repo.ConfirmDraft(repository.ConfirmDraftCmd{
+		DraftID:       draftID,
+		NewTrackingID: generateTrackingID(),
+		ChangedBy:     changedBy,
+		Notes:         "Shipment confirmed",
+		Timestamp:     time.Now().UTC(),
+	})
 	if err != nil {
 		return model.Shipment{}, err
 	}
-	now := time.Now().UTC()
-	from := model.StatusPending
-	event := model.ShipmentEvent{
-		ID:         uuid.NewString(),
-		TrackingID: trackingID,
-		FromStatus: &from,
-		ToStatus:   model.StatusInProgress,
-		ChangedBy:  changedBy,
-		Notes:      "Shipment confirmed",
-		Timestamp:  now,
-	}
-	_ = s.repo.AddEvent(event)
 	s.upsertParties(confirmed)
 	return confirmed, nil
 }
@@ -267,19 +343,18 @@ func (s *ShipmentService) UpdateStatus(trackingID string, req model.UpdateStatus
 			expectedSenderDNI = *current.Corrections.SenderDNI
 		}
 		if expectedSenderDNI != req.SenderDNI {
-			return model.Shipment{}, fmt.Errorf("El DNI no coincide con el del remitente esperado")
+			return model.Shipment{}, fmt.Errorf("DNI does not match the expected sender DNI")
 		}
 	}
 	// Validate ready_for_return: only allowed when shipment is back at its origin branch.
-	// Compares branch IDs directly (CurrentLocation stores branch ID).
 	if req.Status == model.StatusReadyForReturn {
 		if current.CurrentLocation != current.ReceivingBranchID {
 			if b, ok := s.branchRepo.GetByID(current.ReceivingBranchID); ok {
 				return model.Shipment{}, fmt.Errorf(
-					"el envío no está en la sucursal de origen (%s) — retiro por remitente no aplica en esta sucursal", b.City,
+					"shipment is not at its origin branch (%s) — return by sender does not apply at this branch", b.City,
 				)
 			}
-			return model.Shipment{}, fmt.Errorf("el envío no está en la sucursal de origen")
+			return model.Shipment{}, fmt.Errorf("shipment is not at its origin branch")
 		}
 	}
 	// Validate DNI before touching the repository (corrections take precedence)
@@ -292,58 +367,55 @@ func (s *ShipmentService) UpdateStatus(trackingID string, req model.UpdateStatus
 			expectedRecipientDNI = *current.Corrections.RecipientDNI
 		}
 		if expectedRecipientDNI != req.RecipientDNI {
-			return model.Shipment{}, fmt.Errorf("El DNI no coincide con el del destinatario esperado")
+			return model.Shipment{}, fmt.Errorf("DNI does not match the expected recipient DNI")
 		}
 	}
-	updated, err := s.repo.UpdateStatus(trackingID, req.Status)
-	if err != nil {
-		return model.Shipment{}, err
+
+	// Validate any → in_transit: destination must differ from current branch
+	if req.Status == model.StatusInTransit {
+		destID := s.locationToBranchID(req.Location)
+		if destID == current.CurrentLocation {
+			return model.Shipment{}, fmt.Errorf("destination branch must be different from current branch")
+		}
 	}
-	now := time.Now().UTC()
-	// When arriving at_branch from in_transit, auto-derive the location from the last in_transit event
+
+	// Auto-derive location from prior events when needed
+	location := req.Location
 	if req.Status == model.StatusAtBranch && current.Status == model.StatusInTransit {
 		events, _ := s.repo.GetEvents(trackingID)
 		for i := len(events) - 1; i >= 0; i-- {
 			if events[i].ToStatus == model.StatusInTransit {
-				req.Location = events[i].Location
+				location = events[i].Location
 				break
 			}
 		}
 	}
-	// When returning at_branch from delivery_failed, auto-derive the location from the last at_branch event
 	if req.Status == model.StatusAtBranch && current.Status == model.StatusDeliveryFailed {
 		events, _ := s.repo.GetEvents(trackingID)
 		for i := len(events) - 1; i >= 0; i-- {
 			if events[i].ToStatus == model.StatusAtBranch {
-				req.Location = events[i].Location
+				location = events[i].Location
 				break
 			}
 		}
 	}
-	if req.Status != model.StatusDelivered && req.Location != "" {
-		locationID := s.locationToBranchID(req.Location)
-		_ = s.repo.UpdateLocation(trackingID, locationID)
-		updated.CurrentLocation = locationID
+
+	// Resolve city string to branch ID
+	resolvedLocation := ""
+	if req.Status != model.StatusDelivered && location != "" {
+		resolvedLocation = s.locationToBranchID(location)
 	}
-	if req.Status == model.StatusDelivered {
-		if err := s.repo.SetDeliveredAt(trackingID, now); err != nil {
-			return model.Shipment{}, err
-		}
-		updated.DeliveredAt = &now
-	}
-	from := current.Status
-	event := model.ShipmentEvent{
-		ID:         uuid.NewString(),
+
+	return s.repo.UpdateStatus(repository.StatusUpdateCmd{
 		TrackingID: trackingID,
-		FromStatus: &from,
+		FromStatus: current.Status,
 		ToStatus:   req.Status,
+		Location:   resolvedLocation,
 		ChangedBy:  req.ChangedBy,
-		Location:   req.Location,
 		Notes:      req.Notes,
-		Timestamp:  now,
-	}
-	_ = s.repo.AddEvent(event)
-	return updated, nil
+		DriverID:   req.DriverID,
+		Timestamp:  time.Now().UTC(),
+	})
 }
 
 // CorrectShipment stores field corrections without modifying original data and
@@ -352,35 +424,48 @@ func (s *ShipmentService) CorrectShipment(trackingID, username string, req model
 	if req.Corrections.IsEmpty() {
 		return model.Shipment{}, fmt.Errorf("no corrections provided")
 	}
+	if req.Corrections.SenderDNI != nil {
+		if err := validateDNI(*req.Corrections.SenderDNI, "sender_dni"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if req.Corrections.RecipientDNI != nil {
+		if err := validateDNI(*req.Corrections.RecipientDNI, "recipient_dni"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if req.Corrections.SenderEmail != nil {
+		if err := validateEmail(*req.Corrections.SenderEmail, "sender_email"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
+	if req.Corrections.RecipientEmail != nil {
+		if err := validateEmail(*req.Corrections.RecipientEmail, "recipient_email"); err != nil {
+			return model.Shipment{}, err
+		}
+	}
 	shipment, err := s.repo.GetByTrackingID(trackingID)
 	if err != nil {
 		return model.Shipment{}, err
 	}
 	if shipment.Status == model.StatusPending {
-		return model.Shipment{}, fmt.Errorf("los borradores se editan directamente")
+		return model.Shipment{}, fmt.Errorf("drafts must be edited directly")
 	}
 	if shipment.Status == model.StatusDelivered || shipment.Status == model.StatusReturned || shipment.Status == model.StatusCancelled {
-		return model.Shipment{}, fmt.Errorf("no se pueden corregir envíos finalizados")
+		return model.Shipment{}, fmt.Errorf("cannot correct finalized shipments")
 	}
-	updated, err := s.repo.ApplyCorrections(trackingID, req.Corrections)
+	updated, err := s.repo.ApplyCorrections(repository.CorrectCmd{
+		TrackingID:  trackingID,
+		Username:    username,
+		Status:      shipment.Status,
+		Corrections: req.Corrections,
+		Timestamp:   time.Now().UTC(),
+	})
 	if err != nil {
 		return model.Shipment{}, err
 	}
-	now := time.Now().UTC()
-	from := shipment.Status
-	event := model.ShipmentEvent{
-		ID:         uuid.NewString(),
-		TrackingID: trackingID,
-		EventType:  "edited",
-		FromStatus: &from,
-		ToStatus:   shipment.Status,
-		ChangedBy:  username,
-		Notes:      fmt.Sprintf("Corrección de datos: %d campo(s) modificado(s)", len(req.Corrections.Fields())),
-		Timestamp:  now,
-	}
-	_ = s.repo.AddEvent(event)
 	for _, f := range req.Corrections.Fields() {
-		body := fmt.Sprintf("[Corrección] %s. Nuevo valor: %s", f.Label, f.Value)
+		body := fmt.Sprintf("[Correction] %s. New value: %s", f.Label, f.Value)
 		_, _ = s.commentSvc.AddComment(trackingID, username, body)
 	}
 	return updated, nil
@@ -388,7 +473,7 @@ func (s *ShipmentService) CorrectShipment(trackingID, username string, req model
 
 func (s *ShipmentService) CancelShipment(trackingID, username, reason string) (model.Shipment, error) {
 	if strings.TrimSpace(reason) == "" {
-		return model.Shipment{}, fmt.Errorf("el motivo de cancelación es obligatorio")
+		return model.Shipment{}, fmt.Errorf("cancellation reason is required")
 	}
 	shipment, err := s.repo.GetByTrackingID(trackingID)
 	if err != nil {
@@ -401,25 +486,19 @@ func (s *ShipmentService) CancelShipment(trackingID, username, reason string) (m
 		model.StatusCancelled: true,
 	}
 	if nonCancellable[shipment.Status] {
-		return model.Shipment{}, fmt.Errorf("no se puede cancelar un envío en estado '%s'", shipment.Status)
+		return model.Shipment{}, fmt.Errorf("cannot cancel a shipment with status '%s'", shipment.Status)
 	}
-	updated, err := s.repo.UpdateStatus(trackingID, model.StatusCancelled)
+	updated, err := s.repo.CancelShipment(repository.CancelCmd{
+		TrackingID: trackingID,
+		Username:   username,
+		Reason:     reason,
+		FromStatus: shipment.Status,
+		Timestamp:  time.Now().UTC(),
+	})
 	if err != nil {
 		return model.Shipment{}, err
 	}
-	now := time.Now().UTC()
-	from := shipment.Status
-	event := model.ShipmentEvent{
-		ID:         uuid.NewString(),
-		TrackingID: trackingID,
-		FromStatus: &from,
-		ToStatus:   model.StatusCancelled,
-		ChangedBy:  username,
-		Notes:      reason,
-		Timestamp:  now,
-	}
-	_ = s.repo.AddEvent(event)
-	body := fmt.Sprintf("[Cancelación] %s", reason)
+	body := fmt.Sprintf("[Cancellation] %s", reason)
 	_, _ = s.commentSvc.AddComment(trackingID, username, body)
 	return updated, nil
 }

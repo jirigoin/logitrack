@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Language
+
+All UI text (labels, error messages, placeholders, buttons, tooltips) must be in **English**. No Spanish strings in the frontend.
+
 ## Repository layout
 
 This monorepo contains two independent projects, each with its own git repository:
@@ -36,17 +40,26 @@ Standard layered architecture — requests flow: `handler → service → reposi
 cmd/server/main.go          # Entry point: wires repos, services, handlers, registers routes
 internal/
   model/                    # Pure data structs (no logic): Shipment, ShipmentEvent, Branch, User, Stats,
-                            #   Route, Customer, ShipmentComment
-  repository/               # In-memory stores (interface + implementation); swap to Postgres here later
-                            #   shipment, auth, branch, route, customer, comment
+                            #   Route, Customer, ShipmentComment, DomainEvent (+ payload types)
+  repository/               # Interfaces + implementations; swap to Postgres here later
+                            #   shipment.go       — ShipmentRepository interface + command structs + in-memory adapter
+                            #   shipment_es.go    — Event-sourced ShipmentRepository implementation (active)
+                            #   event_store.go    — EventStore interface + in-memory implementation
+                            #   auth, branch, route, customer, comment
+  projection/               # Read-model projectors built from DomainEvents
+                            #   shipment.go       — ShipmentProjection (write-through materialized view)
   service/                  # Business logic: shipment (status transitions, tracking ID, estimated delivery),
                             #   route (driver route assignment/validation), comment (add/list with rules)
   handler/                  # Gin HTTP handlers: shipment, auth, branch, driver, user, customer, comment
   middleware/               # Auth (Bearer token check) + RequireRoles (role-based access)
-  seed/                     # LoadBranches() + Load() called at startup to populate in-memory data
+  seed/                     # LoadBranches() + Load(EventStore, *ShipmentProjection, CustomerRepo)
 ```
 
-**All state is in-memory.** Restarting the server resets all shipments and sessions. Supabase/PostgreSQL migration means adding a new repository implementation and swapping it in `main.go` — no other layers change.
+**Event sourcing — shipments.** `DomainEvent` objects are the source of truth. Shipment state is never mutated directly; instead each write operation appends a domain event to the `EventStore` and applies it to the `ShipmentProjection` (materialized view). Reads (List, Search, Stats, GetByTrackingID) are served from the projection. `GetEvents` transforms `DomainEvent`s back to the `ShipmentEvent` API format.
+
+**All state is in-memory.** Restarting the server resets all data. Migrating to Postgres means implementing `EventStore` and `ShipmentProjection` against a database and swapping them in `main.go` — the service and handler layers do not change.
+
+**ShipmentRepository interface** uses command structs (not raw field parameters). Each command carries everything needed to build the domain event internally: `CreateShipmentCmd`, `SaveDraftCmd`, `UpdateDraftCmd`, `ConfirmDraftCmd`, `StatusUpdateCmd`, `CorrectCmd`, `CancelCmd`. The methods `UpdateLocation`, `SetDeliveredAt`, and `AddEvent` no longer exist — their effects are absorbed into the relevant commands.
 
 **Auth** uses UUID tokens stored in memory. `POST /api/v1/auth/login` returns a token; all other routes require `Authorization: Bearer <token>`. Tokens are lost on restart.
 
@@ -88,10 +101,14 @@ pending (draft) ──confirm──► in_progress ──► in_transit ──�
 - `→ returned`: `sender_dni` required and must match `shipment.sender_dni`.
 - Validation happens **before** `repo.UpdateStatus()` to prevent state corruption on a failed attempt.
 
+**Field format validation** (enforced in `service/shipment.go` for `Create`, `SaveDraft`, `UpdateDraft`, `ConfirmDraft`):
+- `sender_dni` / `recipient_dni`: must contain only digits. In drafts, validated only when the field is non-empty; required and validated on `Create` and `ConfirmDraft`.
+- `sender_email` / `recipient_email`: must match `user@domain.tld` format. Validated only when non-empty (emails are optional).
+
 **`location` field on status updates** — rules vary by transition:
-- `in_progress → in_transit`: required — destination branch city
+- `in_progress → in_transit`: required — destination branch city; **must differ from current branch** (enforced in `service/shipment.go UpdateStatus`)
 - `in_transit → at_branch`: auto-derived from last `in_transit` event; do not send
-- `at_branch → in_transit`: required — next destination branch city
+- `at_branch → in_transit`: required — next destination branch city; **must differ from current branch** (same enforcement)
 - `at_branch → delivering`: not required (going to recipient, not a branch)
 - `at_branch → ready_for_pickup`: not required
 - `at_branch → ready_for_return`: not required
@@ -265,6 +282,8 @@ Six core entities plus supporting value objects:
 On startup, `seed.Load()` populates 8 branches and 8 sample shipments in various states:
 
 **Branches** (seed/seed.go `LoadBranches`): caba, san-pedro, cordoba, mendoza, rio-gallegos, jujuy, posadas, ushuaia.
+
+Branch `name` follows the format `XXXX-NN` — 4-letter code derived from the city name + 2-digit counter per city (e.g. `CDBA-01` for Ciudad de Buenos Aires, `CORD-01` for Córdoba). Increment the counter (`-02`, `-03`) if a second branch exists in the same city.
 
 **Sample shipments** cover key scenarios:
 - `LT-A1B2C3D4`: at_branch (Córdoba) — standard single-hop

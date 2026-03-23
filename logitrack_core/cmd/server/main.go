@@ -8,23 +8,30 @@ import (
 	"github.com/logitrack/core/internal/handler"
 	"github.com/logitrack/core/internal/middleware"
 	"github.com/logitrack/core/internal/model"
+	"github.com/logitrack/core/internal/projection"
 	"github.com/logitrack/core/internal/repository"
 	"github.com/logitrack/core/internal/seed"
 	"github.com/logitrack/core/internal/service"
 )
 
 func main() {
-	// Repositories
-	shipmentRepo := repository.NewInMemoryShipmentRepository()
+	// Event store and projection for event-sourced shipment repository
+	eventStore := repository.NewInMemoryEventStore()
+	shipmentProj := projection.NewShipmentProjection()
+
+	// Other repositories
 	authRepo := repository.NewInMemoryAuthRepository()
 	branchRepo := repository.NewInMemoryBranchRepository()
 	routeRepo := repository.NewInMemoryRouteRepository()
 	customerRepo := repository.NewInMemoryCustomerRepository()
 
 	seed.LoadBranches(branchRepo)
-	seed.Load(shipmentRepo, customerRepo)
+	seed.Load(eventStore, shipmentProj, customerRepo)
 
 	commentRepo := repository.NewInMemoryCommentRepository()
+
+	// Event-sourced shipment repository
+	shipmentRepo := repository.NewEventSourcedShipmentRepository(eventStore, shipmentProj)
 
 	// Services & handlers
 	commentSvc := service.NewCommentService(commentRepo, shipmentRepo)
