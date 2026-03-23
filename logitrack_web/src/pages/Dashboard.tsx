@@ -10,11 +10,12 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; bg: s
   in_transit:  { label: "In Transit", color: "#1e40af", bg: "#dbeafe" },
   at_branch:   { label: "At Branch",  color: "#5b21b6", bg: "#ede9fe" },
   delivering:       { label: "Delivering",     color: "#9a3412", bg: "#ffedd5" },
-  delivery_failed:  { label: "Intento fallido",   color: "#991b1b", bg: "#fee2e2" },
+  delivery_failed:  { label: "Delivery Failed",   color: "#991b1b", bg: "#fee2e2" },
   delivered:        { label: "Delivered",          color: "#065f46", bg: "#d1fae5" },
   ready_for_pickup: { label: "Ready for pickup",      color: "#0e7490", bg: "#cffafe" },
   ready_for_return: { label: "Ready for return",      color: "#5b21b6", bg: "#ede9fe" },
   returned:         { label: "Returned",               color: "#374151", bg: "#f3f4f6" },
+  cancelled:        { label: "Cancelled",               color: "#b91c1c", bg: "#fee2e2" },
 };
 
 export function Dashboard() {

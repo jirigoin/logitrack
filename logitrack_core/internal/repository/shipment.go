@@ -19,7 +19,7 @@ type ShipmentRepository interface {
 	// ConfirmShipment promotes a draft: replaces the draft key with the real trackingID.
 	ConfirmShipment(draftID string, trackingID string, status model.Status) (model.Shipment, error)
 	UpdateDraft(shipment model.Shipment) (model.Shipment, error)
-	ApplyCorrections(trackingID string, corrections map[string]string) (model.Shipment, error)
+	ApplyCorrections(trackingID string, corrections model.ShipmentCorrections) (model.Shipment, error)
 	List(filter model.ShipmentFilter) ([]model.Shipment, error)
 	Search(query string) ([]model.Shipment, error)
 	AddEvent(event model.ShipmentEvent) error
@@ -129,7 +129,7 @@ func (r *inMemoryShipmentRepository) ConfirmShipment(draftID string, trackingID 
 	return shipment, nil
 }
 
-func (r *inMemoryShipmentRepository) ApplyCorrections(trackingID string, corrections map[string]string) (model.Shipment, error) {
+func (r *inMemoryShipmentRepository) ApplyCorrections(trackingID string, corrections model.ShipmentCorrections) (model.Shipment, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	shipment, ok := r.shipments[trackingID]
@@ -137,11 +137,9 @@ func (r *inMemoryShipmentRepository) ApplyCorrections(trackingID string, correct
 		return model.Shipment{}, fmt.Errorf("shipment not found")
 	}
 	if shipment.Corrections == nil {
-		shipment.Corrections = make(map[string]string)
+		shipment.Corrections = &model.ShipmentCorrections{}
 	}
-	for k, v := range corrections {
-		shipment.Corrections[k] = v
-	}
+	shipment.Corrections.Merge(corrections)
 	r.shipments[trackingID] = shipment
 	return shipment, nil
 }
@@ -208,9 +206,13 @@ func (r *inMemoryShipmentRepository) Stats() (model.Stats, error) {
 	stats := model.Stats{
 		Total:    len(r.shipments),
 		ByStatus: map[model.Status]int{},
+		ByBranch: map[string]int{},
 	}
 	for _, s := range r.shipments {
 		stats.ByStatus[s.Status]++
+		if s.Status != model.StatusDelivered && s.Status != model.StatusReturned && s.CurrentLocation != "" {
+			stats.ByBranch[s.CurrentLocation]++
+		}
 	}
 	return stats, nil
 }

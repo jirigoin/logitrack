@@ -69,13 +69,13 @@ export function DriverRoute() {
     }
   };
 
-  if (loading) return <div style={{ padding: 24 }}>Cargando...</div>;
+  if (loading) return <div style={{ padding: 24 }}>Loading...</div>;
 
   if (noRoute || !data) {
     return (
       <div style={{ padding: 24, maxWidth: 560 }}>
-        <h1 style={{ margin: "0 0 8px" }}>Mi ruta</h1>
-        <p style={{ color: "#6b7280", margin: 0 }}>No tenés ruta asignada para hoy.</p>
+        <h1 style={{ margin: "0 0 8px" }}>My route</h1>
+        <p style={{ color: "#6b7280", margin: 0 }}>No route assigned for today.</p>
       </div>
     );
   }
@@ -86,9 +86,9 @@ export function DriverRoute() {
 
   return (
     <div style={{ padding: 24, maxWidth: 600 }}>
-      <h1 style={{ margin: "0 0 4px" }}>Mi ruta</h1>
+      <h1 style={{ margin: "0 0 4px" }}>My route</h1>
       <p style={{ color: "#6b7280", margin: "0 0 6px", fontSize: 14 }}>
-        {today} · {data.shipments.length} envíos · {pending} pendientes · {done} finalizados
+        {today} · {data.shipments.length} shipments · {pending} pending · {done} completed
       </p>
 
       {actionError && (
@@ -147,7 +147,7 @@ export function DriverRoute() {
                     fontWeight: 700, fontSize: 14,
                   }}
                 >
-                  Entregar
+                  Deliver
                 </button>
                 <button
                   onClick={() => { setFailedShipmentId(shipment.tracking_id); setFailedNotes(""); }}
@@ -158,7 +158,7 @@ export function DriverRoute() {
                     fontWeight: 600, fontSize: 14,
                   }}
                 >
-                  Intento fallido
+                  Failed attempt
                 </button>
               </div>
             )}
@@ -166,7 +166,7 @@ export function DriverRoute() {
             {shipment.status === "delivering" && deliverShipmentId === shipment.tracking_id && (
               <div style={{ display: "grid", gap: 8, marginTop: 4 }} onClick={(e) => e.stopPropagation()}>
                 <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-                  DNI del destinatario
+                  Recipient DNI
                 </label>
                 <input
                   value={recipientDni}
@@ -189,7 +189,7 @@ export function DriverRoute() {
                       fontWeight: 700, fontSize: 14,
                     }}
                   >
-                    {submitting ? "Registrando..." : "Confirmar entrega"}
+                    {submitting ? "Saving..." : "Confirm delivery"}
                   </button>
                   <button
                     onClick={() => setDeliverShipmentId(null)}
@@ -198,7 +198,7 @@ export function DriverRoute() {
                       borderRadius: 6, padding: "8px 14px", cursor: "pointer", fontSize: 14,
                     }}
                   >
-                    Cancelar
+                    Cancel
                   </button>
                 </div>
               </div>
@@ -209,7 +209,7 @@ export function DriverRoute() {
                 <textarea
                   value={failedNotes}
                   onChange={(e) => setFailedNotes(e.target.value)}
-                  placeholder="Motivo del intento fallido (requerido)"
+                  placeholder="Reason for failed attempt (required)"
                   rows={2}
                   style={{
                     padding: "8px 12px", borderRadius: 6, border: "1px solid #fca5a5",
@@ -228,7 +228,7 @@ export function DriverRoute() {
                       fontWeight: 700, fontSize: 14,
                     }}
                   >
-                    {submitting ? "Registrando..." : "Confirmar"}
+                    {submitting ? "Saving..." : "Confirm"}
                   </button>
                   <button
                     onClick={() => setFailedShipmentId(null)}
@@ -237,7 +237,7 @@ export function DriverRoute() {
                       borderRadius: 6, padding: "8px 14px", cursor: "pointer", fontSize: 14,
                     }}
                   >
-                    Cancelar
+                    Cancel
                   </button>
                 </div>
               </div>

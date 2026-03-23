@@ -12,7 +12,7 @@ import { usersApi } from "../api/users";
 import type { User } from "../api/auth";
 import { StatusBadge } from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
-import { branchApi, branchLabel, type Branch } from "../api/branches";
+import { branchApi, branchLabel, branchLabelById, type Branch } from "../api/branches";
 import { fmtDate, fmtDateTime } from "../utils/date";
 
 const TRANSITIONS: Record<ShipmentStatus, ShipmentStatus[]> = {
@@ -26,6 +26,7 @@ const TRANSITIONS: Record<ShipmentStatus, ShipmentStatus[]> = {
   ready_for_pickup:  ["delivered", "in_transit"],
   ready_for_return:  ["returned"],
   returned:          [],
+  cancelled:         [],
 };
 
 const STATUS_LABELS: Record<ShipmentStatus, string> = {
@@ -39,10 +40,11 @@ const STATUS_LABELS: Record<ShipmentStatus, string> = {
   ready_for_pickup:  "Ready for pickup",
   ready_for_return:  "Ready for return",
   returned:          "Returned",
+  cancelled:         "Cancelled",
 };
 
 const PACKAGE_LABELS: Record<string, string> = {
-  envelope: "Envelope", box: "Box", pallet: "Pallet", fragile: "Fragile",
+  envelope: "Envelope", box: "Box", pallet: "Pallet",
 };
 
 export function ShipmentDetail() {
@@ -75,6 +77,10 @@ export function ShipmentDetail() {
   const [correctionForm, setCorrectionForm] = useState<Record<string, string>>({});
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [correctionError, setCorrectionError] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
   const reload = async () => {
     if (!trackingId) return;
     try {
@@ -101,6 +107,7 @@ export function ShipmentDetail() {
           destination: s.destination ?? { city: "", province: "" },
           weight_kg: s.weight_kg ?? 0,
           package_type: s.package_type ?? "box",
+          is_fragile: s.is_fragile ?? false,
           special_instructions: s.special_instructions ?? "",
         });
       }
@@ -126,7 +133,7 @@ export function ShipmentDetail() {
       navigate("/?status=pending");
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setSaveDraftError(msg ?? "No se pudieron guardar los cambios.");
+      setSaveDraftError(msg ?? "Failed to save changes.");
     } finally {
       setSavingDraft(false);
     }
@@ -141,7 +148,7 @@ export function ShipmentDetail() {
       navigate(`/shipments/${confirmed.tracking_id}`, { replace: true });
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setConfirmError(msg ?? "No se pudo confirmar el envío.");
+      setConfirmError(msg ?? "Failed to confirm shipment.");
     } finally {
       setConfirming(false);
     }
@@ -242,9 +249,26 @@ export function ShipmentDetail() {
       await reload();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setCorrectionError(msg ?? "No se pudieron guardar las correcciones.");
+      setCorrectionError(msg ?? "Failed to save corrections.");
     } finally {
       setSavingCorrection(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!trackingId) return;
+    setCancelling(true);
+    setCancelError("");
+    try {
+      await shipmentApi.cancelShipment(trackingId, cancelReason);
+      setShowCancelModal(false);
+      setCancelReason("");
+      await reload();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setCancelError(msg ?? "Failed to cancel shipment.");
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -257,7 +281,7 @@ export function ShipmentDetail() {
 
   if (!shipment) return <div style={{ padding: 24 }}>Loading...</div>;
 
-  const isAtOriginBranch = branches.find((b) => b.id === shipment.receiving_branch_id)?.city === shipment.current_location;
+  const isAtOriginBranch = shipment.current_location === shipment.receiving_branch_id;
   const nextStatuses = TRANSITIONS[shipment.status].filter(
     (s) => s !== "ready_for_return" || isAtOriginBranch
   );
@@ -279,9 +303,15 @@ export function ShipmentDetail() {
           <code style={{ fontSize: 22 }}>{shipment.tracking_id}</code>
         </h1>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {hasRole("supervisor", "admin") && shipment.status !== "pending" && shipment.status !== "delivered" && shipment.status !== "returned" && (
+          {hasRole("supervisor", "admin") && shipment.status !== "pending" && shipment.status !== "delivered" && shipment.status !== "returned" && shipment.status !== "cancelled" && (
             <button onClick={openCorrectionModal} style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#374151" }}>
-              ✏️ Editar datos
+              ✏️ Edit data
+            </button>
+          )}
+          {hasRole("supervisor", "admin") && shipment.status !== "pending" && shipment.status !== "delivered" && shipment.status !== "returned" && shipment.status !== "cancelled" && (
+            <button onClick={() => { setCancelReason(""); setCancelError(""); setShowCancelModal(true); }}
+              style={{ background: "#fff", border: "1px solid #fca5a5", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#b91c1c" }}>
+              Cancel shipment
             </button>
           )}
           <StatusBadge status={shipment.status} />
@@ -344,6 +374,7 @@ export function ShipmentDetail() {
                 </Card>
                 <Card title="Package">
                   <InfoRowEx {...pkgVal} label="Type" />
+                  {shipment.is_fragile && <InfoRow label="Fragile" value="⚠️ Yes" />}
                   <InfoRowEx value={weightVal.corrected ? `${cor.weight_kg} kg` : `${shipment.weight_kg} kg`} original={`${shipment.weight_kg} kg`} corrected={weightVal.corrected} label="Weight" />
                   {(shipment.special_instructions || cor.special_instructions) && <InfoRowEx {...instrVal} label="Instructions" />}
                 </Card>
@@ -352,7 +383,7 @@ export function ShipmentDetail() {
                   <InfoRow label="Est. Delivery"  value={fmt(shipment.estimated_delivery_at)} />
                   {shipment.delivered_at && <InfoRow label="Delivered" value={fmt(shipment.delivered_at)} />}
                   {shipment.current_location && (
-                    <InfoRow label="Current location" value={`📍 ${branchLabel(shipment.current_location, branches)}`} />
+                    <InfoRow label="Current location" value={`📍 ${branchLabelById(shipment.current_location, branches)}`} />
                   )}
                 </Card>
               </>;
@@ -488,9 +519,11 @@ export function ShipmentDetail() {
               <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
                   <span style={{ fontWeight: 600 }}>
-                    {ev.from_status
-                      ? `${STATUS_LABELS[ev.from_status as ShipmentStatus]} → ${STATUS_LABELS[ev.to_status]}`
-                      : STATUS_LABELS[ev.to_status]}
+                    {ev.event_type === "edited"
+                      ? STATUS_LABELS[ev.to_status]
+                      : ev.from_status
+                        ? `${STATUS_LABELS[ev.from_status]} → ${STATUS_LABELS[ev.to_status]}`
+                        : STATUS_LABELS[ev.to_status]}
                   </span>
                   <span style={{ color: "#9ca3af" }}>{fmt(ev.timestamp)}</span>
                 </div>
@@ -570,6 +603,38 @@ export function ShipmentDetail() {
           error={correctionError}
         />
       )}
+
+      {showCancelModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: 440, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+            <h2 style={{ margin: "0 0 8px", fontSize: 18, color: "#b91c1c" }}>Cancel shipment</h2>
+            <p style={{ margin: "0 0 20px", fontSize: 14, color: "#6b7280" }}>
+              This action is irreversible. The shipment will move to <strong>Cancelled</strong> and cannot continue transit.
+            </p>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
+              Cancellation reason *
+            </label>
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Describe the reason for cancellation..."
+              rows={4}
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid #d1d5db", fontSize: 14, boxSizing: "border-box", resize: "vertical" }}
+            />
+            {cancelError && <p style={{ color: "#ef4444", fontSize: 13, margin: "8px 0 0" }}>{cancelError}</p>}
+            <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setShowCancelModal(false)} disabled={cancelling}
+                style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 6, padding: "8px 18px", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#374151" }}>
+                Back
+              </button>
+              <button type="button" onClick={handleCancel} disabled={cancelling || !cancelReason.trim()}
+                style={{ background: cancelReason.trim() ? "#b91c1c" : "#fca5a5", color: "#fff", border: "none", borderRadius: 6, padding: "8px 18px", cursor: cancelReason.trim() ? "pointer" : "not-allowed", fontSize: 14, fontWeight: 700 }}>
+                {cancelling ? "Cancelling..." : "Confirm cancellation"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -584,7 +649,6 @@ const PACKAGE_TYPES = [
   { value: "envelope", label: "Envelope" },
   { value: "box",      label: "Box" },
   { value: "pallet",   label: "Pallet" },
-  { value: "fragile",  label: "Fragile" },
 ];
 
 function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, saveError, confirmError, createdAt }: {
@@ -605,62 +669,68 @@ function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, 
 
   return (
     <div style={{ display: "grid", gap: 16, marginBottom: 16 }}>
-      <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>Creado: {createdAt}</p>
+      <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>Created: {createdAt}</p>
 
       {/* Sender */}
       <fieldset style={fsStyle}>
-        <legend style={legStyle}>Remitente</legend>
+        <legend style={legStyle}>Sender</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <DField label="Nombre"><input style={inp} value={form.sender_name ?? ""} onChange={(e) => set("sender_name", e.target.value)} placeholder="Carlos Mendez" /></DField>
-          <DField label="Teléfono"><input style={inp} value={form.sender_phone ?? ""} onChange={(e) => set("sender_phone", e.target.value)} placeholder="+54 9 11 1234-5678" /></DField>
-          <DField label="Email"><input style={inp} type="email" value={form.sender_email ?? ""} onChange={(e) => set("sender_email", e.target.value)} placeholder="opcional" /></DField>
-          <DField label="DNI"><input style={inp} value={form.sender_dni ?? ""} onChange={(e) => set("sender_dni", e.target.value)} placeholder="Ej: 30123456" /></DField>
-          <DField label="Calle"><input style={inp} value={addr("origin").street ?? ""} onChange={(e) => setAddr("origin", "street", e.target.value)} placeholder="Av. Corrientes 1234" /></DField>
-          <DField label="Ciudad *"><input style={inp} value={addr("origin").city ?? ""} onChange={(e) => setAddr("origin", "city", e.target.value)} placeholder="Ciudad de Buenos Aires" /></DField>
-          <DField label="Provincia *">
+          <DField label="Name"><input style={inp} value={form.sender_name ?? ""} onChange={(e) => set("sender_name", e.target.value)} placeholder="Carlos Mendez" /></DField>
+          <DField label="Phone"><input style={inp} value={form.sender_phone ?? ""} onChange={(e) => set("sender_phone", e.target.value)} placeholder="+54 9 11 1234-5678" /></DField>
+          <DField label="Email"><input style={inp} type="email" value={form.sender_email ?? ""} onChange={(e) => set("sender_email", e.target.value)} placeholder="optional" /></DField>
+          <DField label="DNI"><input style={inp} value={form.sender_dni ?? ""} onChange={(e) => set("sender_dni", e.target.value)} placeholder="e.g. 30123456" /></DField>
+          <DField label="Street"><input style={inp} value={addr("origin").street ?? ""} onChange={(e) => setAddr("origin", "street", e.target.value)} placeholder="Av. Corrientes 1234" /></DField>
+          <DField label="City *"><input style={inp} value={addr("origin").city ?? ""} onChange={(e) => setAddr("origin", "city", e.target.value)} placeholder="Buenos Aires" /></DField>
+          <DField label="Province *">
             <select style={inp} value={addr("origin").province ?? ""} onChange={(e) => setAddr("origin", "province", e.target.value)}>
-              <option value="">Seleccionar</option>
+              <option value="">Select</option>
               {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </DField>
-          <DField label="Código postal"><input style={inp} value={addr("origin").postal_code ?? ""} onChange={(e) => setAddr("origin", "postal_code", e.target.value)} placeholder="C1043" /></DField>
+          <DField label="Postal code"><input style={inp} value={addr("origin").postal_code ?? ""} onChange={(e) => setAddr("origin", "postal_code", e.target.value)} placeholder="C1043" /></DField>
         </div>
       </fieldset>
 
       {/* Recipient */}
       <fieldset style={fsStyle}>
-        <legend style={legStyle}>Destinatario</legend>
+        <legend style={legStyle}>Recipient</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <DField label="Nombre"><input style={inp} value={form.recipient_name ?? ""} onChange={(e) => set("recipient_name", e.target.value)} placeholder="Laura Gomez" /></DField>
-          <DField label="Teléfono"><input style={inp} value={form.recipient_phone ?? ""} onChange={(e) => set("recipient_phone", e.target.value)} placeholder="+54 9 351 678-4321" /></DField>
-          <DField label="Email"><input style={inp} type="email" value={form.recipient_email ?? ""} onChange={(e) => set("recipient_email", e.target.value)} placeholder="opcional" /></DField>
-          <DField label="DNI"><input style={inp} value={form.recipient_dni ?? ""} onChange={(e) => set("recipient_dni", e.target.value)} placeholder="Ej: 28456789" /></DField>
-          <DField label="Calle"><input style={inp} value={addr("destination").street ?? ""} onChange={(e) => setAddr("destination", "street", e.target.value)} placeholder="San Martín 456" /></DField>
-          <DField label="Ciudad *"><input style={inp} value={addr("destination").city ?? ""} onChange={(e) => setAddr("destination", "city", e.target.value)} placeholder="Córdoba" /></DField>
-          <DField label="Provincia *">
+          <DField label="Name"><input style={inp} value={form.recipient_name ?? ""} onChange={(e) => set("recipient_name", e.target.value)} placeholder="Laura Gomez" /></DField>
+          <DField label="Phone"><input style={inp} value={form.recipient_phone ?? ""} onChange={(e) => set("recipient_phone", e.target.value)} placeholder="+54 9 351 678-4321" /></DField>
+          <DField label="Email"><input style={inp} type="email" value={form.recipient_email ?? ""} onChange={(e) => set("recipient_email", e.target.value)} placeholder="optional" /></DField>
+          <DField label="DNI"><input style={inp} value={form.recipient_dni ?? ""} onChange={(e) => set("recipient_dni", e.target.value)} placeholder="e.g. 28456789" /></DField>
+          <DField label="Street"><input style={inp} value={addr("destination").street ?? ""} onChange={(e) => setAddr("destination", "street", e.target.value)} placeholder="San Martín 456" /></DField>
+          <DField label="City *"><input style={inp} value={addr("destination").city ?? ""} onChange={(e) => setAddr("destination", "city", e.target.value)} placeholder="Córdoba" /></DField>
+          <DField label="Province *">
             <select style={inp} value={addr("destination").province ?? ""} onChange={(e) => setAddr("destination", "province", e.target.value)}>
-              <option value="">Seleccionar</option>
+              <option value="">Select</option>
               {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </DField>
-          <DField label="Código postal"><input style={inp} value={addr("destination").postal_code ?? ""} onChange={(e) => setAddr("destination", "postal_code", e.target.value)} placeholder="X5000" /></DField>
+          <DField label="Postal code"><input style={inp} value={addr("destination").postal_code ?? ""} onChange={(e) => setAddr("destination", "postal_code", e.target.value)} placeholder="X5000" /></DField>
         </div>
       </fieldset>
 
       {/* Package */}
       <fieldset style={fsStyle}>
-        <legend style={legStyle}>Paquete</legend>
+        <legend style={legStyle}>Package</legend>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <DField label="Peso (kg) *">
+          <DField label="Weight (kg) *">
             <input style={inp} type="number" step="0.1" min="0" value={form.weight_kg || ""} onChange={(e) => set("weight_kg", parseFloat(e.target.value) || 0)} placeholder="3.5" />
           </DField>
-          <DField label="Tipo de paquete *">
+          <DField label="Package type *">
             <select style={inp} value={form.package_type ?? "box"} onChange={(e) => set("package_type", e.target.value)}>
               {PACKAGE_TYPES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
           </DField>
-          <DField label="Instrucciones especiales" style={{ gridColumn: "1 / -1" }}>
-            <input style={inp} value={form.special_instructions ?? ""} onChange={(e) => set("special_instructions", e.target.value)} placeholder='ej: "Frágil — contiene vidrio"' />
+          <DField label="" style={{ gridColumn: "1 / -1" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}>
+              <input type="checkbox" checked={!!form.is_fragile} onChange={(e) => set("is_fragile", e.target.checked)} />
+              Fragile contents (handle with care)
+            </label>
+          </DField>
+          <DField label="Special instructions" style={{ gridColumn: "1 / -1" }}>
+            <input style={inp} value={form.special_instructions ?? ""} onChange={(e) => set("special_instructions", e.target.value)} placeholder='e.g. "Keep upright"' />
           </DField>
         </div>
       </fieldset>
@@ -669,18 +739,18 @@ function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, 
       <div style={{ border: "1px solid #fde68a", background: "#fffbeb", borderRadius: 10, padding: "14px 18px" }}>
         <h2 style={{ fontSize: "1rem", margin: "0 0 8px", color: "#92400e" }}>Draft — pending confirmation</h2>
         <p style={{ margin: "0 0 12px", fontSize: 13, color: "#78350f" }}>
-          Guardá los cambios antes de confirmar. Al confirmar se asignará un tracking ID y el envío ingresará al sistema logístico.
+          Save changes before confirming. On confirmation a tracking ID will be assigned and the shipment will enter the logistics system.
         </p>
         {saveError && <p style={{ color: "#ef4444", margin: "0 0 8px", fontSize: 13 }}>{saveError}</p>}
         {confirmError && <p style={{ color: "#ef4444", margin: "0 0 8px", fontSize: 13 }}>{confirmError}</p>}
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={onSave} disabled={saving || confirming}
             style={{ background: "#fff", color: "#374151", border: "1px solid #d1d5db", borderRadius: 6, padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
-            {saving ? "Guardando..." : "Guardar cambios"}
+            {saving ? "Saving..." : "Save changes"}
           </button>
           <button onClick={onConfirm} disabled={saving || confirming}
             style={{ background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, padding: "8px 20px", cursor: "pointer", fontWeight: 700, fontSize: 14 }}>
-            {confirming ? "Confirmando..." : "Confirmar envío"}
+            {confirming ? "Confirming..." : "Confirm shipment"}
           </button>
         </div>
       </div>
@@ -733,7 +803,7 @@ function RouteTimeline({ events, origin, receivingBranchId, destination, branche
   const isDelivered = lastEvent?.to_status === "delivered";
 
   const statusColors: Record<ShipmentStatus, string> = {
-    pending: "#9ca3af", in_progress: "#f59e0b", in_transit: "#3b82f6", at_branch: "#8b5cf6", delivering: "#f97316", delivery_failed: "#ef4444", delivered: "#10b981", ready_for_pickup: "#0891b2", ready_for_return: "#7c3aed", returned: "#6b7280",
+    pending: "#9ca3af", in_progress: "#f59e0b", in_transit: "#3b82f6", at_branch: "#8b5cf6", delivering: "#f97316", delivery_failed: "#ef4444", delivered: "#10b981", ready_for_pickup: "#0891b2", ready_for_return: "#7c3aed", returned: "#6b7280", cancelled: "#b91c1c",
   };
 
   const solidLine = (color = "#e5e7eb") => (
@@ -890,64 +960,64 @@ function CorrectionModal({ form, onChange, onSave, onClose, saving, error }: {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div style={{ background: "#fff", borderRadius: 12, padding: 24, maxWidth: 680, width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem", color: "#1e3a5f" }}>Corregir datos del envío</h2>
+          <h2 style={{ margin: 0, fontSize: "1.1rem", color: "#1e3a5f" }}>Correct shipment data</h2>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
         </div>
         <p style={{ margin: "0 0 16px", fontSize: 13, color: "#6b7280" }}>
-          Los datos originales no se modifican. Los cambios quedan anotados y registrados en el historial de comentarios.
+          Original data is not modified. Changes are noted and recorded in the comment history.
         </p>
 
-        {/* Remitente */}
+        {/* Sender */}
         <fieldset style={fsStyle}>
-          <legend style={legStyle}>Remitente</legend>
+          <legend style={legStyle}>Sender</legend>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <DField label="Nombre"><input style={inp} value={form.sender_name ?? ""} onChange={(e) => set("sender_name", e.target.value)} /></DField>
-            <DField label="Teléfono"><input style={inp} value={form.sender_phone ?? ""} onChange={(e) => set("sender_phone", e.target.value)} /></DField>
+            <DField label="Name"><input style={inp} value={form.sender_name ?? ""} onChange={(e) => set("sender_name", e.target.value)} /></DField>
+            <DField label="Phone"><input style={inp} value={form.sender_phone ?? ""} onChange={(e) => set("sender_phone", e.target.value)} /></DField>
             <DField label="Email"><input style={inp} value={form.sender_email ?? ""} onChange={(e) => set("sender_email", e.target.value)} /></DField>
             <DField label="DNI"><input style={inp} value={form.sender_dni ?? ""} onChange={(e) => set("sender_dni", e.target.value)} /></DField>
-            <DField label="Calle (origen)"><input style={inp} value={form.origin_street ?? ""} onChange={(e) => set("origin_street", e.target.value)} /></DField>
-            <DField label="Ciudad (origen)"><input style={inp} value={form.origin_city ?? ""} onChange={(e) => set("origin_city", e.target.value)} /></DField>
-            <DField label="Provincia (origen)">
+            <DField label="Street (origin)"><input style={inp} value={form.origin_street ?? ""} onChange={(e) => set("origin_street", e.target.value)} /></DField>
+            <DField label="City (origin)"><input style={inp} value={form.origin_city ?? ""} onChange={(e) => set("origin_city", e.target.value)} /></DField>
+            <DField label="Province (origin)">
               <select style={inp} value={form.origin_province ?? ""} onChange={(e) => set("origin_province", e.target.value)}>
-                <option value="">Seleccionar</option>
+                <option value="">Select</option>
                 {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </DField>
-            <DField label="CP (origen)"><input style={inp} value={form.origin_postal_code ?? ""} onChange={(e) => set("origin_postal_code", e.target.value)} /></DField>
+            <DField label="Postal code (origin)"><input style={inp} value={form.origin_postal_code ?? ""} onChange={(e) => set("origin_postal_code", e.target.value)} /></DField>
           </div>
         </fieldset>
 
-        {/* Destinatario */}
+        {/* Recipient */}
         <fieldset style={{ ...fsStyle, marginTop: 12 }}>
-          <legend style={legStyle}>Destinatario</legend>
+          <legend style={legStyle}>Recipient</legend>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <DField label="Nombre"><input style={inp} value={form.recipient_name ?? ""} onChange={(e) => set("recipient_name", e.target.value)} /></DField>
-            <DField label="Teléfono"><input style={inp} value={form.recipient_phone ?? ""} onChange={(e) => set("recipient_phone", e.target.value)} /></DField>
+            <DField label="Name"><input style={inp} value={form.recipient_name ?? ""} onChange={(e) => set("recipient_name", e.target.value)} /></DField>
+            <DField label="Phone"><input style={inp} value={form.recipient_phone ?? ""} onChange={(e) => set("recipient_phone", e.target.value)} /></DField>
             <DField label="Email"><input style={inp} value={form.recipient_email ?? ""} onChange={(e) => set("recipient_email", e.target.value)} /></DField>
             <DField label="DNI"><input style={inp} value={form.recipient_dni ?? ""} onChange={(e) => set("recipient_dni", e.target.value)} /></DField>
-            <DField label="Calle (destino)"><input style={inp} value={form.destination_street ?? ""} onChange={(e) => set("destination_street", e.target.value)} /></DField>
-            <DField label="Ciudad (destino)"><input style={inp} value={form.destination_city ?? ""} onChange={(e) => set("destination_city", e.target.value)} /></DField>
-            <DField label="Provincia (destino)">
+            <DField label="Street (destination)"><input style={inp} value={form.destination_street ?? ""} onChange={(e) => set("destination_street", e.target.value)} /></DField>
+            <DField label="City (destination)"><input style={inp} value={form.destination_city ?? ""} onChange={(e) => set("destination_city", e.target.value)} /></DField>
+            <DField label="Province (destination)">
               <select style={inp} value={form.destination_province ?? ""} onChange={(e) => set("destination_province", e.target.value)}>
-                <option value="">Seleccionar</option>
+                <option value="">Select</option>
                 {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
             </DField>
-            <DField label="CP (destino)"><input style={inp} value={form.destination_postal_code ?? ""} onChange={(e) => set("destination_postal_code", e.target.value)} /></DField>
+            <DField label="Postal code (destination)"><input style={inp} value={form.destination_postal_code ?? ""} onChange={(e) => set("destination_postal_code", e.target.value)} /></DField>
           </div>
         </fieldset>
 
-        {/* Paquete */}
+        {/* Package */}
         <fieldset style={{ ...fsStyle, marginTop: 12 }}>
-          <legend style={legStyle}>Paquete</legend>
+          <legend style={legStyle}>Package</legend>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <DField label="Peso (kg)"><input style={inp} type="number" step="0.1" min="0" value={form.weight_kg ?? ""} onChange={(e) => set("weight_kg", e.target.value)} /></DField>
-            <DField label="Tipo">
+            <DField label="Weight (kg)"><input style={inp} type="number" step="0.1" min="0" value={form.weight_kg ?? ""} onChange={(e) => set("weight_kg", e.target.value)} /></DField>
+            <DField label="Type">
               <select style={inp} value={form.package_type ?? ""} onChange={(e) => set("package_type", e.target.value)}>
                 {PACKAGE_TYPES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
             </DField>
-            <DField label="Instrucciones especiales" style={{ gridColumn: "1 / -1" }}>
+            <DField label="Special instructions" style={{ gridColumn: "1 / -1" }}>
               <input style={inp} value={form.special_instructions ?? ""} onChange={(e) => set("special_instructions", e.target.value)} />
             </DField>
           </div>
@@ -956,10 +1026,10 @@ function CorrectionModal({ form, onChange, onSave, onClose, saving, error }: {
         {error && <p style={{ color: "#ef4444", fontSize: 13, margin: "12px 0 0" }}>{error}</p>}
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
           <button onClick={onClose} disabled={saving} style={{ background: "#fff", color: "#374151", border: "1px solid #d1d5db", borderRadius: 6, padding: "8px 18px", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
-            Cancelar
+            Cancel
           </button>
           <button onClick={onSave} disabled={saving} style={{ background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, padding: "8px 20px", cursor: saving ? "default" : "pointer", fontWeight: 700, fontSize: 14 }}>
-            {saving ? "Guardando..." : "Guardar correcciones"}
+            {saving ? "Saving..." : "Save corrections"}
           </button>
         </div>
       </div>

@@ -16,6 +16,7 @@ Las specs son la fuente de verdad. La implementación debe satisfacer todos los 
 | 004b | [Búsqueda por tracking ID](./US-004-busqueda-tracking-id.md) | Implementada |
 | 005 | [Búsqueda de envíos](./US-005-busqueda-envios.md) | Implementada |
 | 010 | [Envío devuelto a remitente](./US-010-devolucion-remitente.md) | Implementada |
+| 011 | [Cancelar un envío](./US-011-cancelar-envio.md) | Implementada |
 | 013 | [Timestamp y usuario en cada transición](./US-013-timestamp-usuario-transicion.md) | Implementada |
 | 014 | [Agregar observación al cambiar estado](./US-014-observacion-cambio-estado.md) | Implementada |
 | 012 | [Cambio de estado del envío](./US-012-cambio-estado.md) | Implementada |

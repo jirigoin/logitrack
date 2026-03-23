@@ -10,7 +10,7 @@ import (
 type RouteRepository interface {
 	Create(route model.Route) (model.Route, error)
 	Update(route model.Route) error
-	GetByDriverAndDate(driverID, date string) (model.Route, error)
+	GetByDriverAndDate(driverID string, date model.DateOnly) (model.Route, error)
 	GetByID(id string) (model.Route, error)
 }
 
@@ -42,11 +42,11 @@ func (r *inMemoryRouteRepository) Update(route model.Route) error {
 	return fmt.Errorf("route not found")
 }
 
-func (r *inMemoryRouteRepository) GetByDriverAndDate(driverID, date string) (model.Route, error) {
+func (r *inMemoryRouteRepository) GetByDriverAndDate(driverID string, date model.DateOnly) (model.Route, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, route := range r.routes {
-		if route.DriverID == driverID && route.Date == date {
+		if route.DriverID == driverID && route.Date.Equal(date) {
 			return route, nil
 		}
 	}

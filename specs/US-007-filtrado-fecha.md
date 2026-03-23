@@ -11,7 +11,7 @@
 1. Aplicar un rango de fechas muestra solo los envíos creados en ese período (inclusive en ambos extremos).
 2. Si no hay envíos en el rango, el sistema muestra un mensaje de sin resultados.
 
-**Estado:** Implementada. El backend acepta `date_from` y `date_to` en `GET /api/v1/shipments`. El frontend tiene inputs de tipo `date` en la lista de envíos.
+**Estado:** Implementada. El frontend tiene inputs de tipo `date` en la lista de envíos. El filtrado de fechas se realiza **client-side** para evitar problemas de zona horaria (ver Nota abajo).
 
 ---
 
@@ -26,33 +26,21 @@
    - Ninguno: todos los envíos (comportamiento actual).
 4. El filtro por fecha es combinable con el filtro por estado y con la búsqueda por texto.
 5. Los resultados se ordenan por `tracking_id` ascendente (consistente con el resto de la lista).
+6. Si `date_to` es anterior a `date_from`, el filtro de fecha se deshabilita temporalmente, se muestra un mensaje de error y el campo `date_to` se resalta en rojo.
 
----
-
-## Diseño del endpoint
-
-El filtro de fecha debe incorporarse como query params en `GET /api/v1/shipments`:
-
-```
-GET /api/v1/shipments?date_from=2026-01-01&date_to=2026-03-31
-```
-
-| Parámetro   | Tipo   | Formato      | Notas        |
-|-------------|--------|--------------|--------------|
-| `date_from` | string | `YYYY-MM-DD` | Opcional     |
-| `date_to`   | string | `YYYY-MM-DD` | Opcional     |
-
-> Alternativa: incorporar como params de `/search` para unificar el flujo. A definir en implementación.
+> **Nota de implementación — Zona horaria**: el filtrado de fechas se realiza en el frontend sobre el array de envíos ya cargado en memoria. El campo `created_at` es un timestamp UTC; la comparación se hace extrayendo la fecha local del usuario (`YYYY-MM-DD` en la zona horaria del navegador) en vez de enviar los parámetros al backend. Esto evita que envíos creados pasada la medianoche UTC pero antes de la medianoche local aparezcan en el día incorrecto.
 
 ---
 
 ## Comportamiento del frontend
 
-1. En la lista de envíos (`/`), hay dos inputs de tipo `date` (desde / hasta) junto al filtro de estado.
-2. Al cambiar cualquiera de los dos campos, se re-ejecuta la carga con los parámetros actualizados.
+1. En la lista de envíos (`/`), hay dos inputs de tipo `date` (From / To) junto al filtro de estado.
+2. El filtro de fecha se aplica client-side sobre el array de envíos ya cargado; no dispara una nueva llamada a la API.
 3. Si no hay resultados, se muestra "No shipments found."
-4. El filtro de fecha coexiste con el filtro de estado (client-side) y la búsqueda por texto.
-5. Cuando hay búsqueda activa, las fechas son ignoradas (la búsqueda usa `/search`, no `/shipments`).
+4. El filtro de fecha coexiste con el filtro de estado (también client-side) y con la búsqueda por texto.
+5. Cuando hay búsqueda activa, las fechas son ignoradas (la búsqueda usa `/search` y el resultado reemplaza la lista).
+6. Si `date_to < date_from`, el campo `date_to` muestra borde rojo y aparece el mensaje `"To" date must be after "From"`. El filtro de fecha no se aplica hasta corregir el error.
+7. Un botón "Clear dates" permite limpiar ambos campos a la vez.
 
 ---
 
@@ -95,8 +83,24 @@ GET /api/v1/shipments?date_from=2026-01-01&date_to=2026-03-31
 - **Cuando** se aplica el filtro
 - **Entonces** solo aparecen envíos creados desde el 1 de marzo que están actualmente en tránsito
 
-### CA7 — Fecha inválida
+### CA7 — Fecha inválida en el input
 
-- **Dado** que se envía `date_from=not-a-date`
-- **Cuando** el servidor procesa la petición
-- **Entonces** responde `400 Bad Request` indicando formato de fecha inválido
+- **Dado** que el usuario ingresa un valor no válido en el input de fecha
+- **Cuando** el navegador no puede parsear la fecha
+- **Entonces** el input no actualiza el estado y no se aplica ningún filtro
+
+### CA8 — Rango invertido (To antes que From)
+
+- **Dado** que el usuario ingresa `From = 2026-03-15` y `To = 2026-03-10`
+- **Entonces** el campo `To` muestra borde rojo
+- **Y** aparece el mensaje `"To" date must be after "From"`
+- **Y** el filtro de fecha no se aplica (se muestran todos los envíos del período)
+- **Y** al corregir `To` a `2026-03-20` el error desaparece y el filtro se aplica normalmente
+
+### CA9 — Corrección de zona horaria
+
+- **Dado** que existe un envío creado el `2026-03-20T02:00:00Z` (que en UTC-3 es el `19/03`)
+- **Cuando** el usuario en UTC-3 filtra con `From = 2026-03-20`
+- **Entonces** ese envío **no aparece** (su fecha local es 19/03, antes del filtro)
+- **Y** si el usuario filtra con `From = 2026-03-19`
+- **Entonces** ese envío **sí aparece**

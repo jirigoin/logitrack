@@ -21,7 +21,14 @@ export const branchApi = {
   list: () => api.get<Branch[]>("/branches").then((r) => r.data),
 };
 
+// branchLabel looks up a branch by city string (used for event locations).
 export const branchLabel = (city: string, branches: Branch[]): string => {
   const branch = branches.find((b) => b.city === city);
   return branch ? branch.name : city;
+};
+
+// branchLabelById looks up a branch by its ID (used for shipment.current_location).
+export const branchLabelById = (id: string, branches: Branch[]): string => {
+  const branch = branches.find((b) => b.id === id);
+  return branch ? branch.name : id;
 };

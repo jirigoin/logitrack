@@ -5,8 +5,8 @@ import "time"
 type ShipmentEvent struct {
 	ID         string    `json:"id"`
 	TrackingID string    `json:"tracking_id"`
-	EventType  string    `json:"event_type,omitempty"` // "status_change" | "edited"
-	FromStatus Status    `json:"from_status"`
+	EventType  string    `json:"event_type,omitempty"`  // "status_change" | "edited"
+	FromStatus *Status   `json:"from_status,omitempty"` // nil for initial creation events
 	ToStatus   Status    `json:"to_status"`
 	ChangedBy  string    `json:"changed_by"`
 	Location   string    `json:"location,omitempty"`
