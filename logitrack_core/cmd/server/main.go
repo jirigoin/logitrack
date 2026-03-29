@@ -112,21 +112,22 @@ func main() {
 
 	// Comments — read: all authenticated, write: supervisor/admin
 	protected.GET("/shipments/:tracking_id/comments", allRoles, commentHandler.GetComments)
-	canComment := middleware.RequireRoles(model.RoleSupervisor, model.RoleAdmin)
+	canComment := middleware.RequireRoles(model.RoleOperator, model.RoleSupervisor, model.RoleAdmin)
 	protected.POST("/shipments/:tracking_id/comments", canComment, commentHandler.AddComment)
 
 	// Correct shipment data (non-destructive) — supervisor, admin
-	protected.PATCH("/shipments/:tracking_id/correct", canComment, shipmentHandler.CorrectShipment)
+	canCorrectOrCancel := middleware.RequireRoles(model.RoleSupervisor, model.RoleAdmin)
+	protected.PATCH("/shipments/:tracking_id/correct", canCorrectOrCancel, shipmentHandler.CorrectShipment)
 
 	// Cancel shipment — supervisor, admin
-	protected.POST("/shipments/:tracking_id/cancel", canComment, shipmentHandler.CancelShipment)
+	protected.POST("/shipments/:tracking_id/cancel", canCorrectOrCancel, shipmentHandler.CancelShipment)
 
 	// Change status — supervisor, admin, driver (driver further restricted in handler)
 	canChangeStatus := middleware.RequireRoles(model.RoleOperator, model.RoleSupervisor, model.RoleAdmin, model.RoleDriver)
 	protected.PATCH("/shipments/:tracking_id/status", canChangeStatus, shipmentHandler.UpdateStatus)
 
 	// Stats / dashboard — supervisor, manager, admin
-	canViewStats := middleware.RequireRoles(model.RoleOperator, model.RoleManager, model.RoleAdmin)
+	canViewStats := middleware.RequireRoles(model.RoleSupervisor, model.RoleManager, model.RoleAdmin)
 	protected.GET("/stats", canViewStats, shipmentHandler.Stats)
 
 	// Driver route — driver only
