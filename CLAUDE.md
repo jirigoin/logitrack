@@ -28,6 +28,11 @@ go build ./...
 
 # Tidy dependencies
 go mod tidy
+
+# Regenerate Swagger spec (run from logitrack_core/)
+swag init -g cmd/server/main.go -o ../docs
+rm ../docs/docs.go ../docs/swagger.json
+# Output: docs/swagger.yaml at the repo root. Only the YAML is kept.
 ```
 
 No test suite yet. `go build ./...` is the primary validation step.
