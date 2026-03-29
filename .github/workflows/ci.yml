@@ -48,7 +48,7 @@ jobs:
           cache-dependency-path: logitrack_web/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        run: npm install && npm install @rollup/rollup-linux-x64-gnu --no-save
 
       - name: Lint
         run: npm run lint
