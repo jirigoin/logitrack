@@ -66,8 +66,9 @@ export interface ShipmentEvent {
 export interface Stats {
   total: number;
   by_status: Record<ShipmentStatus, number>;
-  by_branch: Record<string, number>; // branch ID → active shipment count
-  by_day: Record<string, number>;    // YYYY-MM-DD → shipments created that day
+  by_branch: Record<string, number>;         // branch ID → active shipment count
+  by_day: Record<string, number>;            // YYYY-MM-DD → shipments created that day
+  by_day_delivered: Record<string, number>;  // YYYY-MM-DD → shipments delivered that day
 }
 
 export interface CreateShipmentPayload {

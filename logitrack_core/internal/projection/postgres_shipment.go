@@ -240,9 +240,10 @@ func (p *PostgresShipmentProjection) Stats(filter model.ShipmentFilter) (model.S
 	defer rows.Close()
 
 	stats := model.Stats{
-		ByStatus: map[model.Status]int{},
-		ByBranch: map[string]int{},
-		ByDay:    map[string]int{},
+		ByStatus:       map[model.Status]int{},
+		ByBranch:       map[string]int{},
+		ByDay:          map[string]int{},
+		ByDayDelivered: map[string]int{},
 	}
 	for rows.Next() {
 		var status, location string
@@ -263,7 +264,9 @@ func (p *PostgresShipmentProjection) Stats(filter model.ShipmentFilter) (model.S
 	// Pre-fill zeros for every day in the requested range.
 	if filter.DateFrom != nil && filter.DateTo != nil {
 		for d := filter.DateFrom.Truncate(24 * time.Hour); !d.After(*filter.DateTo); d = d.AddDate(0, 0, 1) {
-			stats.ByDay[d.Format("2006-01-02")] = 0
+			key := d.Format("2006-01-02")
+			stats.ByDay[key] = 0
+			stats.ByDayDelivered[key] = 0
 		}
 
 		dayRows, err := p.db.Query(`
@@ -284,6 +287,27 @@ func (p *PostgresShipmentProjection) Stats(filter model.ShipmentFilter) (model.S
 			stats.ByDay[day] = cnt
 		}
 		if err := dayRows.Err(); err != nil {
+			return model.Stats{}, err
+		}
+
+		deliveredRows, err := p.db.Query(`
+			SELECT DATE(delivered_at)::text AS day, COUNT(*) AS cnt
+			FROM shipments
+			WHERE delivered_at >= $1 AND delivered_at <= $2
+			GROUP BY DATE(delivered_at)`, *filter.DateFrom, *filter.DateTo)
+		if err != nil {
+			return model.Stats{}, err
+		}
+		defer deliveredRows.Close()
+		for deliveredRows.Next() {
+			var day string
+			var cnt int
+			if err := deliveredRows.Scan(&day, &cnt); err != nil {
+				return model.Stats{}, err
+			}
+			stats.ByDayDelivered[day] = cnt
+		}
+		if err := deliveredRows.Err(); err != nil {
 			return model.Stats{}, err
 		}
 	}
