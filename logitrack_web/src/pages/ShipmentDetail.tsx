@@ -281,6 +281,8 @@ export function ShipmentDetail() {
   const isAtOriginBranch = shipment.current_location === shipment.receiving_branch_id;
   const nextStatuses = TRANSITIONS[shipment.status].filter(
     (s) => s !== "ready_for_return" || isAtOriginBranch
+  ).filter(
+    (s) => !hasRole("operator") || shipment.status !== "delivering" || s !== "delivered"
   );
   const fmt = fmtDateTime;
   const fmtAddr = (a: { street?: string; city: string; province: string; postal_code?: string }) =>
@@ -300,7 +302,7 @@ export function ShipmentDetail() {
           <code style={{ fontSize: 22 }}>{shipment.tracking_id}</code>
         </h1>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          {hasRole("supervisor", "admin", "operator") && shipment.status !== "pending" && shipment.status !== "delivered" && shipment.status !== "returned" && shipment.status !== "cancelled" && (
+          {hasRole("supervisor", "admin") && shipment.status !== "pending" && shipment.status !== "delivered" && shipment.status !== "returned" && shipment.status !== "cancelled" && (
             <button onClick={openCorrectionModal} style={{ background: "#fff", border: "1px solid #d1d5db", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#374151" }}>
               ✏️ Edit data
             </button>
