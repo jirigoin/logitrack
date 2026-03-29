@@ -320,14 +320,17 @@ func (r *inMemoryShipmentRepository) Stats(filter model.ShipmentFilter) (model.S
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	stats := model.Stats{
-		Total:    len(r.shipments),
-		ByStatus: map[model.Status]int{},
-		ByBranch: map[string]int{},
-		ByDay:    map[string]int{},
+		Total:          len(r.shipments),
+		ByStatus:       map[model.Status]int{},
+		ByBranch:       map[string]int{},
+		ByDay:          map[string]int{},
+		ByDayDelivered: map[string]int{},
 	}
 	if filter.DateFrom != nil && filter.DateTo != nil {
 		for d := filter.DateFrom.Truncate(24 * time.Hour); !d.After(*filter.DateTo); d = d.AddDate(0, 0, 1) {
-			stats.ByDay[d.Format("2006-01-02")] = 0
+			key := d.Format("2006-01-02")
+			stats.ByDay[key] = 0
+			stats.ByDayDelivered[key] = 0
 		}
 	}
 	for _, s := range r.shipments {
@@ -335,13 +338,18 @@ func (r *inMemoryShipmentRepository) Stats(filter model.ShipmentFilter) (model.S
 		if s.Status != model.StatusDelivered && s.Status != model.StatusReturned && s.CurrentLocation != "" {
 			stats.ByBranch[s.CurrentLocation]++
 		}
-		if filter.DateFrom != nil && s.CreatedAt.Before(*filter.DateFrom) {
-			continue
+		inRange := (filter.DateFrom == nil || !s.CreatedAt.Before(*filter.DateFrom)) &&
+			(filter.DateTo == nil || !s.CreatedAt.After(*filter.DateTo))
+		if inRange {
+			stats.ByDay[s.CreatedAt.Format("2006-01-02")]++
 		}
-		if filter.DateTo != nil && s.CreatedAt.After(*filter.DateTo) {
-			continue
+		if s.DeliveredAt != nil {
+			deliveredInRange := (filter.DateFrom == nil || !s.DeliveredAt.Before(*filter.DateFrom)) &&
+				(filter.DateTo == nil || !s.DeliveredAt.After(*filter.DateTo))
+			if deliveredInRange {
+				stats.ByDayDelivered[s.DeliveredAt.Format("2006-01-02")]++
+			}
 		}
-		stats.ByDay[s.CreatedAt.Format("2006-01-02")]++
 	}
 	return stats, nil
 }

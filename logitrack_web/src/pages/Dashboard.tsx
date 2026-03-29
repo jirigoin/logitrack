@@ -68,10 +68,10 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* Shipments per day chart */}
+      {/* Shipments created vs delivered per day chart */}
       <div style={{ marginBottom: 32 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
-          <h2 style={{ margin: 0, fontSize: "1rem" }}>Shipments Created per Day</h2>
+          <h2 style={{ margin: 0, fontSize: "1rem" }}>Shipments Created vs Delivered per Day</h2>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
             <label htmlFor="date-from" style={{ color: "#6b7280" }}>From</label>
             <input
@@ -93,7 +93,12 @@ export function Dashboard() {
             />
           </div>
         </div>
-        <DayChart byDay={stats?.by_day ?? {}} dateFrom={dateFrom} dateTo={dateTo} />
+        <DayChart
+          byDay={stats?.by_day ?? {}}
+          byDayDelivered={stats?.by_day_delivered ?? {}}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+        />
       </div>
 
       {/* Recent shipments */}
@@ -147,19 +152,20 @@ export function Dashboard() {
 
 interface DayChartProps {
   byDay: Record<string, number>;
+  byDayDelivered: Record<string, number>;
   dateFrom: string;
   dateTo: string;
 }
 
-function DayChart({ byDay, dateFrom, dateTo }: DayChartProps) {
+function DayChart({ byDay, byDayDelivered, dateFrom, dateTo }: DayChartProps) {
   // Build ordered list of days in the range.
-  const days: { date: string; count: number }[] = [];
+  const days: { date: string; created: number; delivered: number }[] = [];
   if (dateFrom && dateTo) {
     const cur = new Date(dateFrom + "T00:00:00");
     const end = new Date(dateTo + "T00:00:00");
     while (cur <= end) {
       const key = cur.toISOString().slice(0, 10);
-      days.push({ date: key, count: byDay[key] ?? 0 });
+      days.push({ date: key, created: byDay[key] ?? 0, delivered: byDayDelivered[key] ?? 0 });
       cur.setDate(cur.getDate() + 1);
     }
   }
@@ -168,17 +174,31 @@ function DayChart({ byDay, dateFrom, dateTo }: DayChartProps) {
     return <p style={{ color: "#6b7280", fontSize: 14 }}>Select a date range to see the chart.</p>;
   }
 
-  const maxCount = Math.max(...days.map((d) => d.count), 1);
+  const maxCount = Math.max(...days.map((d) => Math.max(d.created, d.delivered)), 1);
   const chartH = 160;
-  const barW = Math.max(4, Math.min(32, Math.floor(700 / days.length) - 2));
-  const gap = Math.max(1, Math.floor(700 / days.length) - barW);
-  const svgW = days.length * (barW + gap) + 40; // 40px left margin for y-axis labels
+  // Each day group has 2 bars + inner gap; calculate slot width for the whole day
+  const slotW = Math.max(10, Math.min(52, Math.floor(700 / days.length)));
+  const innerGap = 1;
+  const barW = Math.max(2, Math.floor((slotW - innerGap) / 2) - 1);
+  const groupGap = Math.max(2, slotW - 2 * barW - innerGap);
+  const svgW = days.length * (2 * barW + innerGap + groupGap) + 40;
 
   // Y-axis ticks (0, max/2, max)
   const yTicks = [0, Math.round(maxCount / 2), maxCount].filter((v, i, a) => a.indexOf(v) === i);
 
   return (
     <div style={{ overflowX: "auto", background: "#f9fafb", borderRadius: 10, padding: "16px 8px 8px 8px", border: "1px solid #e5e7eb" }}>
+      {/* Legend */}
+      <div style={{ display: "flex", gap: 16, paddingLeft: 40, marginBottom: 8, fontSize: 11, color: "#374151" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 2, background: "#3b82f6" }} />
+          Created
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 2, background: "#10b981" }} />
+          Delivered
+        </span>
+      </div>
       <svg width={svgW} height={chartH + 48} style={{ display: "block" }}>
         {/* Y-axis ticks and gridlines */}
         {yTicks.map((tick) => {
@@ -191,54 +211,85 @@ function DayChart({ byDay, dateFrom, dateTo }: DayChartProps) {
           );
         })}
 
-        {/* Bars */}
+        {/* Bar groups */}
         {days.map((d, i) => {
-          const barH = Math.max(1, Math.round((d.count / maxCount) * chartH));
-          const x = 40 + i * (barW + gap);
-          const y = chartH - barH + 8;
+          const groupX = 40 + i * (2 * barW + innerGap + groupGap);
+          const centerX = groupX + barW + innerGap / 2;
           const showLabel = days.length <= 31 || i % Math.ceil(days.length / 15) === 0;
-          const isWeekend = [0, 6].includes(new Date(d.date + "T00:00:00").getDay());
+
+          const createdH = Math.max(d.created > 0 ? 2 : 0, Math.round((d.created / maxCount) * chartH));
+          const deliveredH = Math.max(d.delivered > 0 ? 2 : 0, Math.round((d.delivered / maxCount) * chartH));
+
+          const xCreated = groupX;
+          const xDelivered = groupX + barW + innerGap;
+
           return (
             <g key={d.date}>
+              {/* Created bar (blue) */}
               <rect
-                x={x}
-                y={y}
+                x={xCreated}
+                y={chartH - createdH + 8}
                 width={barW}
-                height={barH}
+                height={createdH}
                 rx={2}
-                fill={isWeekend ? "#93c5fd" : "#3b82f6"}
+                fill="#3b82f6"
                 opacity={0.85}
               >
-                <title>{d.date}: {d.count} shipment{d.count !== 1 ? "s" : ""}</title>
+                <title>{d.date} — Created: {d.created}</title>
               </rect>
-              {d.count > 0 && barH > 14 && (
-                <text x={x + barW / 2} y={y + barH - 4} textAnchor="middle" fontSize={9} fill="white" fontWeight={600}>
-                  {d.count}
+              {d.created > 0 && createdH > 14 && (
+                <text x={xCreated + barW / 2} y={chartH - createdH + 8 + createdH - 4} textAnchor="middle" fontSize={9} fill="white" fontWeight={600}>
+                  {d.created}
                 </text>
               )}
-              {d.count > 0 && barH <= 14 && (
-                <text x={x + barW / 2} y={y - 3} textAnchor="middle" fontSize={9} fill="#3b82f6" fontWeight={600}>
-                  {d.count}
+              {d.created > 0 && createdH <= 14 && (
+                <text x={xCreated + barW / 2} y={chartH - createdH + 8 - 3} textAnchor="middle" fontSize={9} fill="#3b82f6" fontWeight={600}>
+                  {d.created}
                 </text>
               )}
+
+              {/* Delivered bar (green) */}
+              <rect
+                x={xDelivered}
+                y={chartH - deliveredH + 8}
+                width={barW}
+                height={deliveredH}
+                rx={2}
+                fill="#10b981"
+                opacity={0.85}
+              >
+                <title>{d.date} — Delivered: {d.delivered}</title>
+              </rect>
+              {d.delivered > 0 && deliveredH > 14 && (
+                <text x={xDelivered + barW / 2} y={chartH - deliveredH + 8 + deliveredH - 4} textAnchor="middle" fontSize={9} fill="white" fontWeight={600}>
+                  {d.delivered}
+                </text>
+              )}
+              {d.delivered > 0 && deliveredH <= 14 && (
+                <text x={xDelivered + barW / 2} y={chartH - deliveredH + 8 - 3} textAnchor="middle" fontSize={9} fill="#10b981" fontWeight={600}>
+                  {d.delivered}
+                </text>
+              )}
+
               {showLabel && (
                 <text
-                  x={x + barW / 2}
+                  x={centerX}
                   y={chartH + 22}
                   textAnchor="middle"
                   fontSize={9}
                   fill="#6b7280"
-                  transform={`rotate(-40, ${x + barW / 2}, ${chartH + 22})`}
+                  transform={`rotate(-40, ${centerX}, ${chartH + 22})`}
                 >
-                  {d.date.slice(5)} {/* MM-DD */}
+                  {d.date.slice(5)}
                 </text>
               )}
             </g>
           );
         })}
       </svg>
-      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, paddingLeft: 40 }}>
-        Total in period: <strong style={{ color: "#374151" }}>{days.reduce((s, d) => s + d.count, 0)}</strong> shipments
+      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, paddingLeft: 40, display: "flex", gap: 16 }}>
+        <span>Created in period: <strong style={{ color: "#374151" }}>{days.reduce((s, d) => s + d.created, 0)}</strong></span>
+        <span>Delivered in period: <strong style={{ color: "#374151" }}>{days.reduce((s, d) => s + d.delivered, 0)}</strong></span>
       </div>
     </div>
   );
