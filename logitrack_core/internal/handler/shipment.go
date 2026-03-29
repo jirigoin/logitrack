@@ -383,7 +383,25 @@ func (h *ShipmentHandler) CancelShipment(c *gin.Context) {
 // @Failure      500  {object}  map[string]string
 // @Router       /stats [get]
 func (h *ShipmentHandler) Stats(c *gin.Context) {
-	stats, err := h.svc.Stats()
+	filter := model.ShipmentFilter{}
+	if raw := c.Query("date_from"); raw != "" {
+		t, err := time.Parse("2006-01-02", raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date_from format, use YYYY-MM-DD"})
+			return
+		}
+		filter.DateFrom = &t
+	}
+	if raw := c.Query("date_to"); raw != "" {
+		t, err := time.Parse("2006-01-02", raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date_to format, use YYYY-MM-DD"})
+			return
+		}
+		endOfDay := t.Add(24*time.Hour - time.Nanosecond)
+		filter.DateTo = &endOfDay
+	}
+	stats, err := h.svc.Stats(filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -18,13 +18,30 @@ const statusConfig: Record<ShipmentStatus, { label: string; color: string; bg: s
   cancelled:        { label: "Cancelled",               color: "#b91c1c", bg: "#fee2e2" },
 };
 
+function toDateInput(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultRange(): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 29);
+  return { from: toDateInput(from), to: toDateInput(to) };
+}
+
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [recent, setRecent] = useState<Shipment[]>([]);
+  const range = defaultRange();
+  const [dateFrom, setDateFrom] = useState(range.from);
+  const [dateTo, setDateTo] = useState(range.to);
   const navigate = useNavigate();
 
   useEffect(() => {
-    shipmentApi.stats().then(setStats);
+    shipmentApi.stats({ date_from: dateFrom, date_to: dateTo }).then(setStats);
+  }, [dateFrom, dateTo]);
+
+  useEffect(() => {
     shipmentApi.list().then((all) => {
       const sorted = [...all].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -49,6 +66,34 @@ export function Dashboard() {
             bg={statusConfig[s].bg}
           />
         ))}
+      </div>
+
+      {/* Shipments per day chart */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
+          <h2 style={{ margin: 0, fontSize: "1rem" }}>Shipments Created per Day</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            <label htmlFor="date-from" style={{ color: "#6b7280" }}>From</label>
+            <input
+              id="date-from"
+              type="date"
+              value={dateFrom}
+              max={dateTo}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={{ border: "1px solid #d1d5db", borderRadius: 6, padding: "4px 8px", fontSize: 13 }}
+            />
+            <label htmlFor="date-to" style={{ color: "#6b7280" }}>To</label>
+            <input
+              id="date-to"
+              type="date"
+              value={dateTo}
+              min={dateFrom}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={{ border: "1px solid #d1d5db", borderRadius: 6, padding: "4px 8px", fontSize: 13 }}
+            />
+          </div>
+        </div>
+        <DayChart byDay={stats?.by_day ?? {}} dateFrom={dateFrom} dateTo={dateTo} />
       </div>
 
       {/* Recent shipments */}
@@ -94,6 +139,107 @@ export function Dashboard() {
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+// --- DayChart ---
+
+interface DayChartProps {
+  byDay: Record<string, number>;
+  dateFrom: string;
+  dateTo: string;
+}
+
+function DayChart({ byDay, dateFrom, dateTo }: DayChartProps) {
+  // Build ordered list of days in the range.
+  const days: { date: string; count: number }[] = [];
+  if (dateFrom && dateTo) {
+    const cur = new Date(dateFrom + "T00:00:00");
+    const end = new Date(dateTo + "T00:00:00");
+    while (cur <= end) {
+      const key = cur.toISOString().slice(0, 10);
+      days.push({ date: key, count: byDay[key] ?? 0 });
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+
+  if (days.length === 0) {
+    return <p style={{ color: "#6b7280", fontSize: 14 }}>Select a date range to see the chart.</p>;
+  }
+
+  const maxCount = Math.max(...days.map((d) => d.count), 1);
+  const chartH = 160;
+  const barW = Math.max(4, Math.min(32, Math.floor(700 / days.length) - 2));
+  const gap = Math.max(1, Math.floor(700 / days.length) - barW);
+  const svgW = days.length * (barW + gap) + 40; // 40px left margin for y-axis labels
+
+  // Y-axis ticks (0, max/2, max)
+  const yTicks = [0, Math.round(maxCount / 2), maxCount].filter((v, i, a) => a.indexOf(v) === i);
+
+  return (
+    <div style={{ overflowX: "auto", background: "#f9fafb", borderRadius: 10, padding: "16px 8px 8px 8px", border: "1px solid #e5e7eb" }}>
+      <svg width={svgW} height={chartH + 48} style={{ display: "block" }}>
+        {/* Y-axis ticks and gridlines */}
+        {yTicks.map((tick) => {
+          const y = chartH - Math.round((tick / maxCount) * chartH) + 8;
+          return (
+            <g key={tick}>
+              <line x1={34} x2={svgW} y1={y} y2={y} stroke="#e5e7eb" strokeWidth={1} />
+              <text x={30} y={y + 4} textAnchor="end" fontSize={10} fill="#9ca3af">{tick}</text>
+            </g>
+          );
+        })}
+
+        {/* Bars */}
+        {days.map((d, i) => {
+          const barH = Math.max(1, Math.round((d.count / maxCount) * chartH));
+          const x = 40 + i * (barW + gap);
+          const y = chartH - barH + 8;
+          const showLabel = days.length <= 31 || i % Math.ceil(days.length / 15) === 0;
+          const isWeekend = [0, 6].includes(new Date(d.date + "T00:00:00").getDay());
+          return (
+            <g key={d.date}>
+              <rect
+                x={x}
+                y={y}
+                width={barW}
+                height={barH}
+                rx={2}
+                fill={isWeekend ? "#93c5fd" : "#3b82f6"}
+                opacity={0.85}
+              >
+                <title>{d.date}: {d.count} shipment{d.count !== 1 ? "s" : ""}</title>
+              </rect>
+              {d.count > 0 && barH > 14 && (
+                <text x={x + barW / 2} y={y + barH - 4} textAnchor="middle" fontSize={9} fill="white" fontWeight={600}>
+                  {d.count}
+                </text>
+              )}
+              {d.count > 0 && barH <= 14 && (
+                <text x={x + barW / 2} y={y - 3} textAnchor="middle" fontSize={9} fill="#3b82f6" fontWeight={600}>
+                  {d.count}
+                </text>
+              )}
+              {showLabel && (
+                <text
+                  x={x + barW / 2}
+                  y={chartH + 22}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fill="#6b7280"
+                  transform={`rotate(-40, ${x + barW / 2}, ${chartH + 22})`}
+                >
+                  {d.date.slice(5)} {/* MM-DD */}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, paddingLeft: 40 }}>
+        Total in period: <strong style={{ color: "#374151" }}>{days.reduce((s, d) => s + d.count, 0)}</strong> shipments
+      </div>
     </div>
   );
 }
