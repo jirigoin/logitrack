@@ -1,6 +1,6 @@
 package model
 
-// PriorityPrediction is the response from the ML prediction service.
+// PriorityPrediction is the result from the ML priority prediction.
 type PriorityPrediction struct {
 	Priority   string                  `json:"priority"`   // alta / media / baja
 	Confidence float64                 `json:"confidence"` // 0.0-1.0
@@ -14,16 +14,4 @@ type FactorDetail struct {
 	Normalized   float64     `json:"normalized"`
 	Weight       float64     `json:"weight"`
 	Contribution float64     `json:"contribution"`
-}
-
-// MLServiceRequest is the payload sent to the Python ML service.
-type MLServiceRequest struct {
-	OriginProvince      string  `json:"origin_province"`
-	DestinationProvince string  `json:"destination_province"`
-	ShipmentType        string  `json:"shipment_type"`
-	TimeWindow          string  `json:"time_window"`
-	PackageType         string  `json:"package_type"`
-	WeightKg            float64 `json:"weight_kg"`
-	IsFragile           bool    `json:"is_fragile"`
-	ColdChain           bool    `json:"cold_chain"`
 }

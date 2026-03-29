@@ -29,6 +29,9 @@ go build ./...
 # Tidy dependencies
 go mod tidy
 
+# Train ML model (generates model.json)
+go run cmd/train/main.go
+
 # Regenerate Swagger spec (run from logitrack_core/)
 swag init -g cmd/server/main.go -o ../docs
 rm ../docs/docs.go ../docs/swagger.json
@@ -56,9 +59,13 @@ internal/
   service/                  # Business logic: shipment (status transitions, tracking ID, estimated delivery),
                             #   route (driver route assignment/validation), comment (add/list with rules)
   handler/                  # Gin HTTP handlers: shipment, auth, branch, driver, user, customer, comment
+  ml/                       # RandomForest priority prediction: config, dataset generation, train/predict
   middleware/               # Auth (Bearer token check) + RequireRoles (role-based access)
   seed/                     # LoadBranches() + Load(EventStore, *ShipmentProjection, CustomerRepo)
+cmd/train/main.go           # CLI to train and save the ML model (model.json)
 ```
+
+**ML priority prediction** is integrated directly into the backend (no separate service). Uses `github.com/malaschitz/randomForest` for the RandomForest classifier. The model is trained once via `go run cmd/train/main.go` which generates `model.json`. On startup, the backend loads `model.json` via `ML_MODEL_PATH` env var (default: `model.json`). If the model is missing, predictions are silently skipped. The ML pipeline (config → dataset → train → predict) lives in `internal/ml/`.
 
 **Event sourcing — shipments.** `DomainEvent` objects are the source of truth. Shipment state is never mutated directly; instead each write operation appends a domain event to the `EventStore` and applies it to the `ShipmentProjection` (materialized view). Reads (List, Search, Stats, GetByTrackingID) are served from the projection. `GetEvents` transforms `DomainEvent`s back to the `ShipmentEvent` API format.
 

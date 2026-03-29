@@ -38,7 +38,7 @@ type ShipmentService struct {
 	branchRepo   repository.BranchRepository
 	customerRepo repository.CustomerRepository
 	commentSvc   *CommentService
-	mlClient     *MLClient
+	mlClient     *MLService
 }
 
 func NewShipmentService(
@@ -46,7 +46,7 @@ func NewShipmentService(
 	branchRepo repository.BranchRepository,
 	customerRepo repository.CustomerRepository,
 	commentSvc *CommentService,
-	mlClient *MLClient,
+	mlClient *MLService,
 ) *ShipmentService {
 	return &ShipmentService{repo: repo, branchRepo: branchRepo, customerRepo: customerRepo, commentSvc: commentSvc, mlClient: mlClient}
 }
@@ -327,7 +327,7 @@ func (s *ShipmentService) ConfirmDraft(draftID string, changedBy string) (model.
 
 	// Predict priority via ML service after confirmation
 	if s.mlClient != nil {
-		if prediction := s.mlClient.Predict(confirmed); prediction != nil {
+		if prediction := s.mlClient.PredictFromShipment(confirmed); prediction != nil {
 			confirmed.Priority = prediction.Priority
 		}
 	}
