@@ -99,7 +99,7 @@ func SaveModel(forest *randomforest.Forest, path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal model: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write model file: %w", err)
 	}
 	fmt.Printf("[ML] Model saved to %s (%d bytes)\n", path, len(data))

@@ -200,6 +200,10 @@ export function ShipmentDetail() {
       weight_kg: c.weight_kg ?? String(shipment.weight_kg ?? ""),
       package_type: c.package_type ?? shipment.package_type ?? "",
       special_instructions: c.special_instructions ?? shipment.special_instructions ?? "",
+      shipment_type: c.shipment_type ?? shipment.shipment_type ?? "normal",
+      time_window: c.time_window ?? shipment.time_window ?? "flexible",
+      cold_chain: c.cold_chain ?? (shipment.cold_chain ? "true" : "false"),
+      is_fragile: c.is_fragile ?? (shipment.is_fragile ? "true" : "false"),
     });
     setCorrectionError("");
     setShowCorrectionModal(true);
@@ -229,6 +233,10 @@ export function ShipmentDetail() {
       weight_kg: c.weight_kg ?? String(shipment.weight_kg ?? ""),
       package_type: c.package_type ?? shipment.package_type ?? "",
       special_instructions: c.special_instructions ?? shipment.special_instructions ?? "",
+      shipment_type: c.shipment_type ?? shipment.shipment_type ?? "normal",
+      time_window: c.time_window ?? shipment.time_window ?? "flexible",
+      cold_chain: c.cold_chain ?? (shipment.cold_chain ? "true" : "false"),
+      is_fragile: c.is_fragile ?? (shipment.is_fragile ? "true" : "false"),
     };
     const changed: Record<string, string> = {};
     for (const key of Object.keys(correctionForm)) {
@@ -1170,6 +1178,28 @@ function CorrectionModal({ form, onChange, onSave, onClose, saving, error }: {
             <DField label="Type">
               <select style={inp} value={form.package_type ?? ""} onChange={(e) => set("package_type", e.target.value)}>
                 {PACKAGE_TYPES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </DField>
+            <DField label="Shipment type">
+              <select style={inp} value={form.shipment_type ?? "normal"} onChange={(e) => set("shipment_type", e.target.value)}>
+                {SHIPMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </DField>
+            <DField label="Time window">
+              <select style={inp} value={form.time_window ?? "flexible"} onChange={(e) => set("time_window", e.target.value)}>
+                {TIME_WINDOWS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </DField>
+            <DField label="Cold chain">
+              <select style={inp} value={form.cold_chain ?? "false"} onChange={(e) => set("cold_chain", e.target.value)}>
+                <option value="false">No</option>
+                <option value="true">Yes (refrigerated)</option>
+              </select>
+            </DField>
+            <DField label="Fragile contents">
+              <select style={inp} value={form.is_fragile ?? "false"} onChange={(e) => set("is_fragile", e.target.value)}>
+                <option value="false">No</option>
+                <option value="true">Yes (handle with care)</option>
               </select>
             </DField>
             <DField label="Special instructions" style={{ gridColumn: "1 / -1" }}>

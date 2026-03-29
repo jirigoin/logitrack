@@ -29,6 +29,13 @@ export type ShipmentType = "normal" | "express";
 export type TimeWindow = "morning" | "afternoon" | "flexible";
 export type Priority = "alta" | "media" | "baja";
 
+export interface PriorityFactorDetail {
+  value: string | number;
+  normalized: number;
+  weight: number;
+  contribution: number;
+}
+
 export interface Address {
   street?: string;
   city: string;
@@ -48,6 +55,9 @@ export interface Shipment {
   time_window?: TimeWindow;
   cold_chain?: boolean;
   priority?: Priority;
+  priority_score?: number;
+  priority_confidence?: number;
+  priority_factors?: Record<string, PriorityFactorDetail>;
   receiving_branch_id?: string;
   current_location?: string; // branch ID of current location
   status: ShipmentStatus;

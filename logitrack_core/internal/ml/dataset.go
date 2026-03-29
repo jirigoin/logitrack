@@ -41,9 +41,11 @@ func init() {
 	}
 }
 
-var shipmentTypes = []string{"normal", "express"}
-var timeWindows = []string{"morning", "afternoon", "flexible"}
-var packageTypes = []string{"envelope", "box", "pallet"}
+var (
+	shipmentTypes = []string{"normal", "express"}
+	timeWindows   = []string{"morning", "afternoon", "flexible"}
+	packageTypes  = []string{"envelope", "box", "pallet"}
+)
 
 // HaversineKm calculates distance between two points on Earth using Haversine formula.
 func HaversineKm(lat1, lng1, lat2, lng2 float64) float64 {
