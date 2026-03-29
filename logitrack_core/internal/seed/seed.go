@@ -17,6 +17,9 @@ type shipmentSeed struct {
 	packageType       model.PackageType
 	isFragile         bool
 	specialInstr      string
+	shipmentType      model.ShipmentType
+	timeWindow        model.TimeWindow
+	coldChain         bool
 	receivingBranchID string
 	events            []eventSeed
 }
@@ -59,6 +62,8 @@ func Load(store repository.EventStore, proj *projection.ShipmentProjection, cust
 			recipient:         model.Customer{DNI: "31204567", Name: "Laura Gomez", Phone: "+54 9 351 678-4321", Address: model.Address{Street: "San Martín 456", City: "Córdoba", Province: "Córdoba", PostalCode: "X5000"}},
 			weightKg:          3.5,
 			packageType:       model.PackageBox,
+			shipmentType:      model.ShipmentTypeNormal,
+			timeWindow:        model.TimeWindowFlexible,
 			receivingBranchID: "caba",
 			events: []eventSeed{
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "caba", notes: "Shipment created", hoursAgo: 48},
@@ -72,6 +77,8 @@ func Load(store repository.EventStore, proj *projection.ShipmentProjection, cust
 			recipient:         model.Customer{DNI: "25618930", Name: "Diego Fernández", Phone: "+54 9 261 987-6543", Email: "dfernandez@empresa.com", Address: model.Address{Street: "Belgrano 321", City: "Mendoza", Province: "Mendoza", PostalCode: "M5500"}},
 			weightKg:          12.0,
 			packageType:       model.PackagePallet,
+			shipmentType:      model.ShipmentTypeExpress,
+			timeWindow:        model.TimeWindowMorning,
 			receivingBranchID: "caba",
 			events: []eventSeed{
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "caba", notes: "Shipment created", hoursAgo: 72},
@@ -87,6 +94,8 @@ func Load(store repository.EventStore, proj *projection.ShipmentProjection, cust
 			weightKg:          0.3,
 			packageType:       model.PackageEnvelope,
 			specialInstr:      "Handle with care — legal documents",
+			shipmentType:      model.ShipmentTypeExpress,
+			timeWindow:        model.TimeWindowMorning,
 			receivingBranchID: "caba",
 			events: []eventSeed{
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "caba", notes: "Shipment created", hoursAgo: 6},
@@ -98,6 +107,8 @@ func Load(store repository.EventStore, proj *projection.ShipmentProjection, cust
 			recipient:         model.Customer{DNI: "28934075", Name: "Juan Castro", Phone: "+54 9 387 445-6677", Address: model.Address{Street: "Av. España 1200", City: "Posadas", Province: "Misiones", PostalCode: "N3300"}},
 			weightKg:          5.2,
 			packageType:       model.PackageBox,
+			shipmentType:      model.ShipmentTypeNormal,
+			timeWindow:        model.TimeWindowAfternoon,
 			receivingBranchID: "jujuy",
 			events: []eventSeed{
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "jujuy", notes: "Shipment created", hoursAgo: 30},
@@ -112,6 +123,8 @@ func Load(store repository.EventStore, proj *projection.ShipmentProjection, cust
 			packageType:       model.PackageBox,
 			isFragile:         true,
 			specialInstr:      "Fragile — glass items",
+			shipmentType:      model.ShipmentTypeNormal,
+			timeWindow:        model.TimeWindowFlexible,
 			receivingBranchID: "cordoba",
 			events: []eventSeed{
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "cordoba", notes: "Shipment created", hoursAgo: 96},
@@ -126,6 +139,8 @@ func Load(store repository.EventStore, proj *projection.ShipmentProjection, cust
 			recipient:         model.Customer{DNI: "26843019", Name: "Nicolás Herrera", Phone: "+54 9 294 556-7788", Address: model.Address{Street: "San Martín 200", City: "Río Gallegos", Province: "Santa Cruz", PostalCode: "Z9400"}},
 			weightKg:          2.1,
 			packageType:       model.PackageBox,
+			shipmentType:      model.ShipmentTypeNormal,
+			timeWindow:        model.TimeWindowFlexible,
 			receivingBranchID: "caba",
 			events: []eventSeed{
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "caba", notes: "Shipment created", hoursAgo: 2},
@@ -138,6 +153,8 @@ func Load(store repository.EventStore, proj *projection.ShipmentProjection, cust
 			recipient:         model.Customer{DNI: "30123456", Name: "Marcela Suárez", Phone: "+54 9 11 4433-2211", Address: model.Address{Street: "Larrea 1450", City: "Ciudad de Buenos Aires", Province: "Buenos Aires", PostalCode: "C1117"}},
 			weightKg:          1.2,
 			packageType:       model.PackageBox,
+			shipmentType:      model.ShipmentTypeNormal,
+			timeWindow:        model.TimeWindowAfternoon,
 			receivingBranchID: "san-pedro",
 			events: []eventSeed{
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "san-pedro", notes: "Shipment created", hoursAgo: 24},
@@ -152,6 +169,8 @@ func Load(store repository.EventStore, proj *projection.ShipmentProjection, cust
 			recipient:         model.Customer{DNI: "28456789", Name: "Tomás Villanueva", Phone: "+54 9 11 6655-4433", Address: model.Address{Street: "Av. Santa Fe 4500", City: "Ciudad de Buenos Aires", Province: "Buenos Aires", PostalCode: "C1425"}},
 			weightKg:          0.8,
 			packageType:       model.PackageEnvelope,
+			shipmentType:      model.ShipmentTypeNormal,
+			timeWindow:        model.TimeWindowFlexible,
 			receivingBranchID: "cordoba",
 			events: []eventSeed{
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "cordoba", notes: "Shipment created", hoursAgo: 12},
@@ -168,6 +187,8 @@ func Load(store repository.EventStore, proj *projection.ShipmentProjection, cust
 			packageType:       model.PackageBox,
 			isFragile:         true,
 			specialInstr:      "Medical equipment — handle with extreme care, keep upright",
+			shipmentType:      model.ShipmentTypeExpress,
+			timeWindow:        model.TimeWindowMorning,
 			receivingBranchID: "caba",
 			events: []eventSeed{
 				{from: "", to: model.StatusInProgress, changedBy: "operator1", location: "caba", notes: "Shipment created", hoursAgo: 120},
@@ -194,6 +215,9 @@ func Load(store repository.EventStore, proj *projection.ShipmentProjection, cust
 			PackageType:         s.packageType,
 			IsFragile:           s.isFragile,
 			SpecialInstructions: s.specialInstr,
+			ShipmentType:        s.shipmentType,
+			TimeWindow:          s.timeWindow,
+			ColdChain:           s.coldChain,
 			ReceivingBranchID:   s.receivingBranchID,
 			Status:              model.StatusInProgress,
 			CurrentLocation:     s.events[0].location,

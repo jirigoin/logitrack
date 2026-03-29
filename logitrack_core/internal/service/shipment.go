@@ -38,6 +38,7 @@ type ShipmentService struct {
 	branchRepo   repository.BranchRepository
 	customerRepo repository.CustomerRepository
 	commentSvc   *CommentService
+	mlClient     *MLClient
 }
 
 func NewShipmentService(
@@ -45,8 +46,9 @@ func NewShipmentService(
 	branchRepo repository.BranchRepository,
 	customerRepo repository.CustomerRepository,
 	commentSvc *CommentService,
+	mlClient *MLClient,
 ) *ShipmentService {
-	return &ShipmentService{repo: repo, branchRepo: branchRepo, customerRepo: customerRepo, commentSvc: commentSvc}
+	return &ShipmentService{repo: repo, branchRepo: branchRepo, customerRepo: customerRepo, commentSvc: commentSvc, mlClient: mlClient}
 }
 
 func (s *ShipmentService) upsertParties(shipment model.Shipment) {
@@ -95,6 +97,25 @@ func (s *ShipmentService) Create(req model.CreateShipmentRequest) (model.Shipmen
 	if b, ok := s.branchRepo.GetByID(req.ReceivingBranchID); ok {
 		currentLocation = b.ID
 	}
+
+	// Default values for optional fields
+	shipmentType := req.ShipmentType
+	if shipmentType == "" {
+		shipmentType = model.ShipmentTypeNormal
+	}
+	timeWindow := req.TimeWindow
+	if timeWindow == "" {
+		timeWindow = model.TimeWindowFlexible
+	}
+
+	// Predict priority via ML service
+	var priority string
+	if s.mlClient != nil {
+		if prediction := s.mlClient.PredictFromCreateRequest(req); prediction != nil {
+			priority = prediction.Priority
+		}
+	}
+
 	shipment := model.Shipment{
 		TrackingID:          generateTrackingID(),
 		Sender:              req.Sender,
@@ -103,6 +124,10 @@ func (s *ShipmentService) Create(req model.CreateShipmentRequest) (model.Shipmen
 		PackageType:         req.PackageType,
 		IsFragile:           req.IsFragile,
 		SpecialInstructions: req.SpecialInstructions,
+		ShipmentType:        shipmentType,
+		TimeWindow:          timeWindow,
+		ColdChain:           req.ColdChain,
+		Priority:            priority,
 		ReceivingBranchID:   req.ReceivingBranchID,
 		Status:              model.StatusInProgress,
 		CurrentLocation:     currentLocation,
@@ -148,6 +173,17 @@ func (s *ShipmentService) SaveDraft(req model.SaveDraftRequest) (model.Shipment,
 	if b, ok := s.branchRepo.GetByID(req.ReceivingBranchID); ok {
 		currentLocation = b.ID
 	}
+
+	// Default values for optional fields
+	shipmentType := req.ShipmentType
+	if shipmentType == "" {
+		shipmentType = model.ShipmentTypeNormal
+	}
+	timeWindow := req.TimeWindow
+	if timeWindow == "" {
+		timeWindow = model.TimeWindowFlexible
+	}
+
 	shipment := model.Shipment{
 		TrackingID:          generateDraftID(),
 		Sender:              req.Sender,
@@ -156,6 +192,9 @@ func (s *ShipmentService) SaveDraft(req model.SaveDraftRequest) (model.Shipment,
 		PackageType:         req.PackageType,
 		IsFragile:           req.IsFragile,
 		SpecialInstructions: req.SpecialInstructions,
+		ShipmentType:        shipmentType,
+		TimeWindow:          timeWindow,
+		ColdChain:           req.ColdChain,
 		ReceivingBranchID:   req.ReceivingBranchID,
 		Status:              model.StatusPending,
 		CurrentLocation:     currentLocation,
@@ -200,6 +239,9 @@ func (s *ShipmentService) UpdateDraft(draftID string, req model.SaveDraftRequest
 	existing.PackageType = req.PackageType
 	existing.IsFragile = req.IsFragile
 	existing.SpecialInstructions = req.SpecialInstructions
+	existing.ShipmentType = req.ShipmentType
+	existing.TimeWindow = req.TimeWindow
+	existing.ColdChain = req.ColdChain
 	existing.ReceivingBranchID = req.ReceivingBranchID
 	existing.UpdatedAt = time.Now().UTC()
 	// Prefer branch ID derived from receiving branch; fall back to origin city lookup.
@@ -282,6 +324,14 @@ func (s *ShipmentService) ConfirmDraft(draftID string, changedBy string) (model.
 	if err != nil {
 		return model.Shipment{}, err
 	}
+
+	// Predict priority via ML service after confirmation
+	if s.mlClient != nil {
+		if prediction := s.mlClient.Predict(confirmed); prediction != nil {
+			confirmed.Priority = prediction.Priority
+		}
+	}
+
 	s.upsertParties(confirmed)
 	return confirmed, nil
 }

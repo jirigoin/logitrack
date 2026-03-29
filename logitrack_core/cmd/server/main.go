@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -34,8 +35,14 @@ func main() {
 	shipmentRepo := repository.NewEventSourcedShipmentRepository(eventStore, shipmentProj)
 
 	// Services & handlers
+	mlServiceURL := os.Getenv("ML_SERVICE_URL")
+	if mlServiceURL == "" {
+		mlServiceURL = "http://localhost:5001"
+	}
+	mlClient := service.NewMLClient(mlServiceURL)
+
 	commentSvc := service.NewCommentService(commentRepo, shipmentRepo)
-	shipmentSvc := service.NewShipmentService(shipmentRepo, branchRepo, customerRepo, commentSvc)
+	shipmentSvc := service.NewShipmentService(shipmentRepo, branchRepo, customerRepo, commentSvc, mlClient)
 	routeSvc := service.NewRouteService(routeRepo, shipmentRepo)
 	shipmentHandler := handler.NewShipmentHandler(shipmentSvc, routeSvc, commentSvc)
 	commentHandler := handler.NewCommentHandler(commentSvc)

@@ -33,6 +33,21 @@ type Address struct {
 	PostalCode string `json:"postal_code,omitempty"`
 }
 
+type ShipmentType string
+
+const (
+	ShipmentTypeNormal  ShipmentType = "normal"
+	ShipmentTypeExpress ShipmentType = "express"
+)
+
+type TimeWindow string
+
+const (
+	TimeWindowMorning   TimeWindow = "morning"
+	TimeWindowAfternoon TimeWindow = "afternoon"
+	TimeWindowFlexible  TimeWindow = "flexible"
+)
+
 type Shipment struct {
 	TrackingID string `json:"tracking_id"`
 
@@ -45,8 +60,16 @@ type Shipment struct {
 	IsFragile           bool        `json:"is_fragile,omitempty"`
 	SpecialInstructions string      `json:"special_instructions,omitempty"`
 
+	// Shipment attributes
+	ShipmentType ShipmentType `json:"shipment_type,omitempty"` // normal / express
+	TimeWindow   TimeWindow   `json:"time_window,omitempty"`   // morning / afternoon / flexible
+	ColdChain    bool         `json:"cold_chain,omitempty"`    // requires refrigeration
+
 	// Receiving branch
 	ReceivingBranchID string `json:"receiving_branch_id,omitempty"`
+
+	// Priority (set by ML service on create/confirm)
+	Priority string `json:"priority,omitempty"` // alta / media / baja
 
 	// Status & dates
 	Status              Status     `json:"status"`
@@ -192,12 +215,15 @@ type CreateShipmentRequest struct {
 	Sender    Customer `json:"sender"    binding:"required"`
 	Recipient Customer `json:"recipient" binding:"required"`
 
-	WeightKg            float64     `json:"weight_kg"           binding:"required,gt=0"`
-	PackageType         PackageType `json:"package_type"        binding:"required"`
-	IsFragile           bool        `json:"is_fragile"`
-	SpecialInstructions string      `json:"special_instructions"`
-	ReceivingBranchID   string      `json:"receiving_branch_id" binding:"required"`
-	CreatedBy           string      `json:"created_by"`
+	WeightKg            float64      `json:"weight_kg"           binding:"required,gt=0"`
+	PackageType         PackageType  `json:"package_type"        binding:"required"`
+	IsFragile           bool         `json:"is_fragile"`
+	SpecialInstructions string       `json:"special_instructions"`
+	ShipmentType        ShipmentType `json:"shipment_type"`
+	TimeWindow          TimeWindow   `json:"time_window"`
+	ColdChain           bool         `json:"cold_chain"`
+	ReceivingBranchID   string       `json:"receiving_branch_id" binding:"required"`
+	CreatedBy           string       `json:"created_by"`
 }
 
 // ShipmentFilter holds optional query filters for listing shipments.
@@ -217,10 +243,13 @@ type SaveDraftRequest struct {
 	Sender    Customer `json:"sender"`
 	Recipient Customer `json:"recipient"`
 
-	WeightKg            float64     `json:"weight_kg"`
-	PackageType         PackageType `json:"package_type"`
-	IsFragile           bool        `json:"is_fragile"`
-	SpecialInstructions string      `json:"special_instructions"`
-	ReceivingBranchID   string      `json:"receiving_branch_id"`
-	CreatedBy           string      `json:"created_by"`
+	WeightKg            float64      `json:"weight_kg"`
+	PackageType         PackageType  `json:"package_type"`
+	IsFragile           bool         `json:"is_fragile"`
+	SpecialInstructions string       `json:"special_instructions"`
+	ShipmentType        ShipmentType `json:"shipment_type"`
+	TimeWindow          TimeWindow   `json:"time_window"`
+	ColdChain           bool         `json:"cold_chain"`
+	ReceivingBranchID   string       `json:"receiving_branch_id"`
+	CreatedBy           string       `json:"created_by"`
 }
