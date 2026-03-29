@@ -4,4 +4,5 @@ type Stats struct {
 	Total    int            `json:"total"`
 	ByStatus map[Status]int `json:"by_status"`
 	ByBranch map[string]int `json:"by_branch"` // branch ID → shipment count (excludes delivered/returned)
+	ByDay    map[string]int `json:"by_day"`     // YYYY-MM-DD → shipments created that day (within requested range)
 }

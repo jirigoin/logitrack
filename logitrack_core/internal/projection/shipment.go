@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/logitrack/core/internal/model"
 )
@@ -152,19 +153,33 @@ func (p *ShipmentProjection) Search(query string) ([]model.Shipment, error) {
 	return result, nil
 }
 
-func (p *ShipmentProjection) Stats() (model.Stats, error) {
+func (p *ShipmentProjection) Stats(filter model.ShipmentFilter) (model.Stats, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	stats := model.Stats{
 		Total:    len(p.shipments),
 		ByStatus: map[model.Status]int{},
 		ByBranch: map[string]int{},
+		ByDay:    map[string]int{},
+	}
+	// Pre-fill zeros for every day in the requested range.
+	if filter.DateFrom != nil && filter.DateTo != nil {
+		for d := filter.DateFrom.Truncate(24 * time.Hour); !d.After(*filter.DateTo); d = d.AddDate(0, 0, 1) {
+			stats.ByDay[d.Format("2006-01-02")] = 0
+		}
 	}
 	for _, s := range p.shipments {
 		stats.ByStatus[s.Status]++
 		if s.Status != model.StatusDelivered && s.Status != model.StatusReturned && s.CurrentLocation != "" {
 			stats.ByBranch[s.CurrentLocation]++
 		}
+		if filter.DateFrom != nil && s.CreatedAt.Before(*filter.DateFrom) {
+			continue
+		}
+		if filter.DateTo != nil && s.CreatedAt.After(*filter.DateTo) {
+			continue
+		}
+		stats.ByDay[s.CreatedAt.Format("2006-01-02")]++
 	}
 	return stats, nil
 }
