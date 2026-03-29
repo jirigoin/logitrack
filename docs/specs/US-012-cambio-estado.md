@@ -68,7 +68,7 @@ pending ──[confirmar]──► in_progress ──► in_transit ──► at
 10. `→ delivered` **no** actualiza `current_location` (el paquete ya no está en ninguna sucursal).
 11. Toda validación ocurre **antes** de escribir en el repositorio — estado nunca queda corrupto.
 12. El driver solo puede cambiar estado de envíos asignados a su ruta del día (validado en handler).
-13. El operator no puede ejecutar `delivering → delivered` (validado en handler: se obtiene el estado actual del envío y se rechaza con 403 si es `delivering`). La transición `ready_for_pickup → delivered` sí está permitida para operator.
+13. El operator no puede ejecutar ninguna transición desde `delivering` (validado en handler: se obtiene el estado actual y se rechaza con 403 si es `delivering`). La transición `ready_for_pickup → delivered` sí está permitida para operator.
 
 ---
 
@@ -149,7 +149,7 @@ pending ──[confirmar]──► in_progress ──► in_transit ──► at
 ### CA08 — Operador no puede confirmar entrega
 
 **Dado** un usuario con rol `operator` y un envío en `delivering`
-**Cuando** hace `PATCH /shipments/:id/status` con `{ "status": "delivered" }`
+**Cuando** hace `PATCH /shipments/:id/status` con cualquier estado destino
 **Entonces** el servidor responde `403 Forbidden`
 **Y** el estado del envío no cambia
 

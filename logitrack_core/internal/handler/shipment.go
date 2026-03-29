@@ -238,10 +238,10 @@ func (h *ShipmentHandler) UpdateStatus(c *gin.Context) {
 	}
 	user := c.MustGet(middleware.UserKey).(model.User)
 	req.ChangedBy = user.Username
-	if user.Role == model.RoleOperator && req.Status == model.StatusDelivered {
+	if user.Role == model.RoleOperator {
 		current, err := h.svc.GetByTrackingID(c.Param("tracking_id"))
 		if err == nil && current.Status == model.StatusDelivering {
-			c.JSON(http.StatusForbidden, gin.H{"error": "operators cannot mark shipments as delivered from delivering status"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "operators cannot update shipments in delivering status"})
 			return
 		}
 	}
