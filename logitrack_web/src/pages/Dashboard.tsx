@@ -116,7 +116,8 @@ export function Dashboard() {
       {recent.length === 0 ? (
         <p style={{ color: "#6b7280" }}>No shipments yet.</p>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+        <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 500 }}>
           <thead>
             <tr style={{ background: "#f9fafb", textAlign: "left" }}>
               <th style={th}>Tracking ID</th>
@@ -144,6 +145,7 @@ export function Dashboard() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

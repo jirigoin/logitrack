@@ -29,8 +29,8 @@ func (r *postgresCustomerRepository) Upsert(customer model.Customer) {
 		ON CONFLICT (dni) DO UPDATE SET
 			name    = EXCLUDED.name,
 			phone   = EXCLUDED.phone,
-			email   = EXCLUDED.email,
-			address = EXCLUDED.address`,
+			email   = CASE WHEN EXCLUDED.email <> '' THEN EXCLUDED.email ELSE customers.email END,
+			address = COALESCE(customers.address, '{}') || EXCLUDED.address`,
 		customer.DNI, customer.Name, customer.Phone, customer.Email, addr,
 	)
 }

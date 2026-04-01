@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { useIsMobile } from "./hooks/useIsMobile";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Dashboard } from "./pages/Dashboard";
 import { ShipmentList } from "./pages/ShipmentList";
@@ -20,11 +21,18 @@ const ROLE_LABELS: Record<string, string> = {
 
 function Nav() {
   const { user, logout, hasRole } = useAuth();
+  const isMobile = useIsMobile();
   if (!user) return null;
 
   return (
-    <nav style={{ background: "#1e3a5f", color: "#fff", padding: "0 24px", display: "flex", alignItems: "center", gap: 24, height: 52 }}>
-      <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: 1, marginRight: 8 }}>LogiTrack</span>
+    <nav style={{
+      background: "#1e3a5f", color: "#fff",
+      padding: isMobile ? "8px 12px" : "0 24px",
+      display: "flex", alignItems: "center",
+      gap: isMobile ? 10 : 24,
+      minHeight: 52, flexWrap: "wrap", rowGap: 6,
+    }}>
+      <span style={{ fontWeight: 800, fontSize: isMobile ? 15 : 17, letterSpacing: 1 }}>LogiTrack</span>
 
       {hasRole("supervisor", "manager", "admin") && (
         <NavLink to="/dashboard" style={navStyle}>Dashboard</NavLink>
@@ -32,17 +40,21 @@ function Nav() {
       <NavLink to="/" end style={navStyle}>Shipments</NavLink>
       <NavLink to="/track" style={navStyle}>Track</NavLink>
 
-      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
-        <span style={{ fontSize: 13, color: "#94a3b8" }}>
-          <strong style={{ color: "#e2e8f0" }}>{user.username}</strong>
-          {" · "}
-          <span style={{ color: "#64748b", background: "#0f2744", padding: "2px 8px", borderRadius: 10, fontSize: 11 }}>
-            {ROLE_LABELS[user.role]}
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: isMobile ? 8 : 14 }}>
+        {isMobile ? (
+          <span style={{ fontSize: 12, color: "#e2e8f0", fontWeight: 600 }}>{user.username}</span>
+        ) : (
+          <span style={{ fontSize: 13, color: "#94a3b8" }}>
+            <strong style={{ color: "#e2e8f0" }}>{user.username}</strong>
+            {" · "}
+            <span style={{ color: "#64748b", background: "#0f2744", padding: "2px 8px", borderRadius: 10, fontSize: 11 }}>
+              {ROLE_LABELS[user.role]}
+            </span>
           </span>
-        </span>
+        )}
         <button onClick={logout}
-          style={{ background: "none", border: "1px solid #334155", color: "#94a3b8", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 13 }}>
-          Sign out
+          style={{ background: "none", border: "1px solid #334155", color: "#94a3b8", borderRadius: 6, padding: isMobile ? "4px 8px" : "4px 12px", cursor: "pointer", fontSize: isMobile ? 12 : 13 }}>
+          {isMobile ? "✕" : "Sign out"}
         </button>
       </div>
     </nav>
@@ -51,24 +63,35 @@ function Nav() {
 
 function DriverNav() {
   const { user, logout } = useAuth();
+  const isMobile = useIsMobile();
   if (!user) return null;
 
   return (
-    <nav style={{ background: "#1e3a5f", color: "#fff", padding: "0 24px", display: "flex", alignItems: "center", gap: 24, height: 52 }}>
-      <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: 1, marginRight: 8 }}>LogiTrack</span>
+    <nav style={{
+      background: "#1e3a5f", color: "#fff",
+      padding: isMobile ? "8px 12px" : "0 24px",
+      display: "flex", alignItems: "center",
+      gap: isMobile ? 10 : 24,
+      minHeight: 52,
+    }}>
+      <span style={{ fontWeight: 800, fontSize: isMobile ? 15 : 17, letterSpacing: 1 }}>LogiTrack</span>
       <NavLink to="/driver/route" style={navStyle}>Mi ruta</NavLink>
 
-      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
-        <span style={{ fontSize: 13, color: "#94a3b8" }}>
-          <strong style={{ color: "#e2e8f0" }}>{user.username}</strong>
-          {" · "}
-          <span style={{ color: "#64748b", background: "#0f2744", padding: "2px 8px", borderRadius: 10, fontSize: 11 }}>
-            Chofer
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: isMobile ? 8 : 14 }}>
+        {isMobile ? (
+          <span style={{ fontSize: 12, color: "#e2e8f0", fontWeight: 600 }}>{user.username}</span>
+        ) : (
+          <span style={{ fontSize: 13, color: "#94a3b8" }}>
+            <strong style={{ color: "#e2e8f0" }}>{user.username}</strong>
+            {" · "}
+            <span style={{ color: "#64748b", background: "#0f2744", padding: "2px 8px", borderRadius: 10, fontSize: 11 }}>
+              Chofer
+            </span>
           </span>
-        </span>
+        )}
         <button onClick={logout}
-          style={{ background: "none", border: "1px solid #334155", color: "#94a3b8", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 13 }}>
-          Sign out
+          style={{ background: "none", border: "1px solid #334155", color: "#94a3b8", borderRadius: 6, padding: isMobile ? "4px 8px" : "4px 12px", cursor: "pointer", fontSize: isMobile ? 12 : 13 }}>
+          {isMobile ? "✕" : "Sign out"}
         </button>
       </div>
     </nav>

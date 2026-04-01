@@ -3,8 +3,10 @@ import { shipmentApi, type Shipment, type ShipmentEvent, type ShipmentStatus } f
 import { branchApi, type Branch } from "../api/branches";
 import { StatusBadge } from "../components/StatusBadge";
 import { fmtDate, fmtDateTime } from "../utils/date";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 export function PublicTracking() {
+  const isMobile = useIsMobile();
   const [query, setQuery] = useState("");
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [events, setEvents] = useState<ShipmentEvent[]>([]);
@@ -36,7 +38,7 @@ export function PublicTracking() {
   };
 
   return (
-    <div style={{ maxWidth: 640, margin: "48px auto", padding: "0 24px" }}>
+    <div style={{ maxWidth: 640, margin: isMobile ? "24px auto" : "48px auto", padding: "0 16px" }}>
       <h1 style={{ textAlign: "center", marginBottom: 8 }}>Track your shipment</h1>
       <p style={{ textAlign: "center", color: "#6b7280", marginBottom: 32 }}>
         Enter your tracking ID to see the current status
@@ -68,7 +70,7 @@ export function PublicTracking() {
               <code style={{ fontSize: 18, fontWeight: 700 }}>{shipment.tracking_id}</code>
               <StatusBadge status={shipment.status} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px", fontSize: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "8px 16px", fontSize: 14 }}>
               <InfoRow label="From" value={`${shipment.sender.address.city}, ${shipment.sender.address.province}`} />
               <InfoRow label="To" value={`${shipment.recipient.address.city}, ${shipment.recipient.address.province}`} />
               <InfoRow label="Sender" value={shipment.sender.name} />
