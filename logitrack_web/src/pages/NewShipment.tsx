@@ -4,6 +4,7 @@ import { shipmentApi, type CreateShipmentPayload, type PackageType, type Shipmen
 import { branchApi, type Branch } from "../api/branches";
 import { customerApi, type Customer } from "../api/customers";
 import { fmtDateTime } from "../utils/date";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 const PROVINCES = [
   "Buenos Aires", "Catamarca", "Chaco", "Chubut", "Córdoba", "Corrientes",
@@ -45,6 +46,7 @@ const initialForm: CreateShipmentPayload = {
 };
 
 export function NewShipment() {
+  const isMobile = useIsMobile();
   const [form, setForm] = useState<CreateShipmentPayload>(initialForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -172,7 +174,7 @@ export function NewShipment() {
   };
 
   return (
-    <div style={{ padding: "24px 32px", maxWidth: 720, margin: "0 auto" }}>
+    <div style={{ padding: isMobile ? 16 : "24px 32px", maxWidth: 720, margin: "0 auto" }}>
       <button onClick={() => navigate("/")} style={backBtn}>← Back to list</button>
       <h1 style={{ marginTop: 16, marginBottom: 24 }}>New Shipment</h1>
 
@@ -429,7 +431,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Row2({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>{children}</div>;
+  const isMobile = useIsMobile();
+  return <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>{children}</div>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

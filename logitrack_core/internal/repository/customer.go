@@ -28,6 +28,17 @@ func (r *inMemoryCustomerRepository) Upsert(customer model.Customer) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if existing, ok := r.customers[customer.DNI]; ok {
+		if customer.Address.Street == "" {
+			customer.Address.Street = existing.Address.Street
+		}
+		if customer.Address.PostalCode == "" {
+			customer.Address.PostalCode = existing.Address.PostalCode
+		}
+		if customer.Email == "" {
+			customer.Email = existing.Email
+		}
+	}
 	r.customers[customer.DNI] = customer
 }
 
