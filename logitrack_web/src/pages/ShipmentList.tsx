@@ -140,7 +140,8 @@ export function ShipmentList() {
       ) : (
         <>
           <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 8 }}>{filtered.length} shipment{filtered.length !== 1 ? "s" : ""}</p>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 800 }}>
             <thead>
               <tr style={{ background: "#f9fafb", textAlign: "left" }}>
                 <th style={th}>Tracking ID</th>
@@ -173,6 +174,7 @@ export function ShipmentList() {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
     </div>

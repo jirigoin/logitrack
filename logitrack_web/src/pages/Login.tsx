@@ -29,7 +29,7 @@ export function Login() {
       minHeight: "100vh", display: "flex", alignItems: "center",
       justifyContent: "center", background: "#f1f5f9",
     }}>
-      <div style={{ width: 360, background: "#fff", borderRadius: 12, padding: 36, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
+      <div style={{ maxWidth: 360, width: "90%", background: "#fff", borderRadius: 12, padding: 36, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ fontSize: 28, fontWeight: 800, color: "#1e3a5f", letterSpacing: 1 }}>LogiTrack</div>
           <div style={{ color: "#6b7280", fontSize: 14, marginTop: 4 }}>Sign in to continue</div>

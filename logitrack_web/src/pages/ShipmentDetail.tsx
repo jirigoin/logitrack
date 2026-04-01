@@ -16,6 +16,7 @@ import { useAuth } from "../context/AuthContext";
 import { branchApi, branchLabel, branchLabelById, type Branch } from "../api/branches";
 import { customerApi, type Customer } from "../api/customers";
 import { fmtDate, fmtDateTime } from "../utils/date";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 const TRANSITIONS: Record<ShipmentStatus, ShipmentStatus[]> = {
   pending:           [],
@@ -51,6 +52,7 @@ const PACKAGE_LABELS: Record<string, string> = {
 
 export function ShipmentDetail() {
   const { hasRole, user } = useAuth();
+  const isMobile = useIsMobile();
   const { trackingId } = useParams<{ trackingId: string }>();
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [events, setEvents] = useState<ShipmentEvent[]>([]);
@@ -301,10 +303,10 @@ export function ShipmentDetail() {
     [a.street, a.city, a.province, a.postal_code].filter(Boolean).join(", ");
 
   return (
-    <div style={{ padding: "24px 32px" }}>
+    <div style={{ padding: isMobile ? 16 : "24px 32px" }}>
       <button onClick={() => navigate("/")} style={backBtn}>← Back to list</button>
 
-      <div style={{ display: "grid", gridTemplateColumns: "720px 300px", gap: 32, alignItems: "start", marginTop: 16, justifyContent: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "720px 300px", gap: isMobile ? 16 : 32, alignItems: "start", marginTop: 16 }}>
 
       {/* ── Left column ── */}
       <div>
@@ -345,7 +347,7 @@ export function ShipmentDetail() {
       ) : (
         /* ── Read-only info grid ── */
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 16 }}>
             {(() => {
               const cor = shipment.corrections ?? {};
               const cv = (key: string, original: string) =>
@@ -568,7 +570,7 @@ export function ShipmentDetail() {
       </div>{/* end left column */}
 
       {/* ── Right column: Comments ── */}
-      <div style={{ position: "sticky", top: 24 }}>
+      <div style={isMobile ? {} : { position: "sticky", top: 24 }}>
         <div style={{ ...cardStyle }}>
           <h2 style={{ fontSize: "1rem", margin: "0 0 12px" }}>Comments</h2>
           {hasRole("supervisor", "admin", "operator") && shipment.status !== "delivered" && shipment.status !== "returned" && (
@@ -633,7 +635,7 @@ export function ShipmentDetail() {
 
       {showCancelModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", width: 440, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: "28px 32px", maxWidth: 440, width: "calc(100vw - 32px)", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
             <h2 style={{ margin: "0 0 8px", fontSize: 18, color: "#b91c1c" }}>Cancel shipment</h2>
             <p style={{ margin: "0 0 20px", fontSize: 14, color: "#6b7280" }}>
               This action is irreversible. The shipment will move to <strong>Cancelled</strong> and cannot continue transit.
@@ -731,6 +733,7 @@ function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, 
   confirmError: string;
   createdAt: string;
 }) {
+  const isMobile = useIsMobile();
   const set = (field: string, value: unknown) => onChange({ ...form, [field]: value });
   const setSender = (field: string, value: unknown) =>
     onChange({ ...form, sender: { ...form.sender, [field]: value } });
@@ -817,7 +820,7 @@ function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, 
       {/* Sender */}
       <fieldset style={fsStyle}>
         <legend style={legStyle}>Sender</legend>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
           <DField label="Name"><input style={inp} value={form.sender.name ?? ""} onChange={(e) => setSender("name", e.target.value)} placeholder="Carlos Mendez" /></DField>
           <DField label="Phone"><input style={inp} value={form.sender.phone ?? ""} onChange={(e) => setSender("phone", e.target.value)} placeholder="+54 9 11 1234-5678" /></DField>
           <DField label="Email"><input style={inp} type="email" value={form.sender.email ?? ""} onChange={(e) => setSender("email", e.target.value)} placeholder="optional" /></DField>
@@ -840,7 +843,7 @@ function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, 
       {/* Recipient */}
       <fieldset style={fsStyle}>
         <legend style={legStyle}>Recipient</legend>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
           <DField label="Name"><input style={inp} value={form.recipient.name ?? ""} onChange={(e) => setRecipient("name", e.target.value)} placeholder="Laura Gomez" /></DField>
           <DField label="Phone"><input style={inp} value={form.recipient.phone ?? ""} onChange={(e) => setRecipient("phone", e.target.value)} placeholder="+54 9 351 678-4321" /></DField>
           <DField label="Email"><input style={inp} type="email" value={form.recipient.email ?? ""} onChange={(e) => setRecipient("email", e.target.value)} placeholder="optional" /></DField>
@@ -863,7 +866,7 @@ function DraftEditForm({ form, onChange, onSave, onConfirm, saving, confirming, 
       {/* Package */}
       <fieldset style={fsStyle}>
         <legend style={legStyle}>Package</legend>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
           <DField label="Weight (kg) *">
             <input style={inp} type="number" step="0.1" min="0" value={form.weight_kg || ""} onChange={(e) => set("weight_kg", parseFloat(e.target.value) || 0)} placeholder="3.5" />
           </DField>
@@ -1118,6 +1121,7 @@ function CorrectionModal({ form, onChange, onSave, onClose, saving, error }: {
   saving: boolean;
   error: string;
 }) {
+  const isMobile = useIsMobile();
   const set = (key: string, value: string) => onChange({ ...form, [key]: value });
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -1133,7 +1137,7 @@ function CorrectionModal({ form, onChange, onSave, onClose, saving, error }: {
         {/* Sender */}
         <fieldset style={fsStyle}>
           <legend style={legStyle}>Sender</legend>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
             <DField label="Name"><input style={inp} value={form.sender_name ?? ""} onChange={(e) => set("sender_name", e.target.value)} /></DField>
             <DField label="Phone"><input style={inp} value={form.sender_phone ?? ""} onChange={(e) => set("sender_phone", e.target.value)} /></DField>
             <DField label="Email"><input style={inp} value={form.sender_email ?? ""} onChange={(e) => set("sender_email", e.target.value)} /></DField>
@@ -1153,7 +1157,7 @@ function CorrectionModal({ form, onChange, onSave, onClose, saving, error }: {
         {/* Recipient */}
         <fieldset style={{ ...fsStyle, marginTop: 12 }}>
           <legend style={legStyle}>Recipient</legend>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
             <DField label="Name"><input style={inp} value={form.recipient_name ?? ""} onChange={(e) => set("recipient_name", e.target.value)} /></DField>
             <DField label="Phone"><input style={inp} value={form.recipient_phone ?? ""} onChange={(e) => set("recipient_phone", e.target.value)} /></DField>
             <DField label="Email"><input style={inp} value={form.recipient_email ?? ""} onChange={(e) => set("recipient_email", e.target.value)} /></DField>
@@ -1173,7 +1177,7 @@ function CorrectionModal({ form, onChange, onSave, onClose, saving, error }: {
         {/* Package */}
         <fieldset style={{ ...fsStyle, marginTop: 12 }}>
           <legend style={legStyle}>Package</legend>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
             <DField label="Weight (kg)"><input style={inp} type="number" step="0.1" min="0" value={form.weight_kg ?? ""} onChange={(e) => set("weight_kg", e.target.value)} /></DField>
             <DField label="Type">
               <select style={inp} value={form.package_type ?? ""} onChange={(e) => set("package_type", e.target.value)}>
