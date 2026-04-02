@@ -19,8 +19,8 @@ export function AvailableVehicles() {
   const [filterType, setFilterType] = useState<VehicleType | "">("");
   const [filterCapacity, setFilterCapacity] = useState<string>("");
 
-  // Solo supervisor, manager y admin pueden ver vehículos disponibles
-  if (!hasRole("supervisor") && !hasRole("manager") && !hasRole("admin")) {
+  // Solo supervisor y admin pueden ver vehículos disponibles
+  if (!hasRole("supervisor") && !hasRole("admin")) {
     return <Navigate to="/dashboard" replace />;
   }
 

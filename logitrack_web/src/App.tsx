@@ -43,7 +43,7 @@ function Nav() {
       )}
       <NavLink to="/" end style={navStyle}>Shipments</NavLink>
       <NavLink to="/track" style={navStyle}>Track</NavLink>
-      {hasRole("supervisor", "manager", "admin") && (
+      {hasRole("supervisor", "admin") && (
         <>
           <NavLink to="/vehicles" style={navStyle}>Flota</NavLink>
           <NavLink to="/vehicle-status" style={navStyle}>Consulta Vehículo</NavLink>

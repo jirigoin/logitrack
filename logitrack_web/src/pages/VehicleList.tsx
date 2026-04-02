@@ -41,6 +41,19 @@ export function VehicleList() {
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleStatusResponse | null>(null);
   const { hasRole } = useAuth();
 
+  // Solo Admin y Supervisor pueden gestionar la flota
+  const canManageFleet = hasRole("admin") || hasRole("supervisor");
+
+  // Redirigir si no tiene permisos
+  if (!canManageFleet) {
+    return (
+      <div style={{ padding: 24, textAlign: "center" }}>
+        <h2>Acceso Denegado</h2>
+        <p style={{ color: "#6b7280" }}>Solo los roles de Administrador y Supervisor pueden gestionar la flota.</p>
+      </div>
+    );
+  }
+
   const isAdmin = hasRole("admin");
 
   const [formData, setFormData] = useState({

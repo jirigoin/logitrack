@@ -102,6 +102,9 @@ func main() {
 	nonDriver := middleware.RequireRoles(model.RoleOperator, model.RoleSupervisor, model.RoleManager, model.RoleAdmin)
 	protected.GET("/branches", nonDriver, branchHandler.List)
 
+	// Shipment detail/events — non-driver roles
+	allRoles := middleware.RequireRoles(model.RoleOperator, model.RoleSupervisor, model.RoleManager, model.RoleAdmin)
+
 	// Vehicles — list: non-driver roles, create: admin only, available: supervisor+, by-plate: supervisor+, update status: supervisor+, assign: supervisor+
 	protected.GET("/vehicles", nonDriver, vehicleHandler.List)
 	canViewVehicleStatus := middleware.RequireRoles(model.RoleSupervisor, model.RoleManager, model.RoleAdmin)
@@ -109,16 +112,13 @@ func main() {
 	canCreateVehicle := middleware.RequireRoles(model.RoleAdmin)
 	protected.POST("/vehicles", canCreateVehicle, vehicleHandler.Create)
 	protected.GET("/vehicles/by-plate/:plate", canViewVehicleStatus, vehicleHandler.GetByPlate)
-	protected.GET("/vehicles/by-shipment/:trackingId", canViewVehicleStatus, vehicleHandler.GetByShipment)
+	protected.GET("/vehicles/by-shipment/:trackingId", allRoles, vehicleHandler.GetByShipment)
 	protected.PATCH("/vehicles/by-plate/:plate/status", canViewVehicleStatus, vehicleHandler.UpdateStatusByPlate)
 	protected.POST("/vehicles/by-plate/:plate/assign", canViewVehicleStatus, vehicleHandler.AssignToShipment)
 
 	// Shipments list/search — non-driver roles only
 	protected.GET("/shipments", nonDriver, shipmentHandler.List)
 	protected.GET("/search", nonDriver, shipmentHandler.Search)
-
-	// Shipment detail/events — all roles including driver
-	allRoles := middleware.RequireRoles(model.RoleOperator, model.RoleSupervisor, model.RoleManager, model.RoleAdmin, model.RoleDriver)
 	protected.GET("/shipments/:tracking_id", allRoles, shipmentHandler.GetByTrackingID)
 	protected.GET("/shipments/:tracking_id/events", allRoles, shipmentHandler.GetEvents)
 

@@ -60,8 +60,8 @@ export function VehicleStatus() {
   const [transitionError, setTransitionError] = useState<string>("");
   const [showForceConfirm, setShowForceConfirm] = useState(false);
 
-  // Solo supervisor, manager y admin pueden consultar
-  if (!hasRole("supervisor") && !hasRole("manager") && !hasRole("admin")) {
+  // Solo supervisor y admin pueden gestionar la flota
+  if (!hasRole("supervisor") && !hasRole("admin")) {
     return <Navigate to="/dashboard" replace />;
   }
 
