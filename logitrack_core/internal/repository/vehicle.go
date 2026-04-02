@@ -2,7 +2,9 @@ package repository
 
 import (
 	"errors"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/logitrack/core/internal/model"
 )
@@ -15,6 +17,7 @@ type VehicleRepository interface {
 	GetByID(id string) (model.Vehicle, bool)
 	GetByLicensePlate(licensePlate string) (model.Vehicle, bool)
 	UpdateStatus(id string, status model.VehicleStatus) error
+	AssignShipment(id string, trackingID *string) error
 }
 
 type inMemoryVehicleRepository struct {
@@ -66,8 +69,9 @@ func (r *inMemoryVehicleRepository) GetByID(id string) (model.Vehicle, bool) {
 func (r *inMemoryVehicleRepository) GetByLicensePlate(licensePlate string) (model.Vehicle, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	plateUpper := strings.ToUpper(licensePlate)
 	for _, v := range r.vehicles {
-		if v.LicensePlate == licensePlate {
+		if strings.ToUpper(v.LicensePlate) == plateUpper {
 			return v, true
 		}
 	}
@@ -80,6 +84,20 @@ func (r *inMemoryVehicleRepository) UpdateStatus(id string, status model.Vehicle
 	for i, v := range r.vehicles {
 		if v.ID == id {
 			r.vehicles[i].Status = status
+			r.vehicles[i].UpdatedAt = time.Now()
+			return nil
+		}
+	}
+	return errors.New("vehicle not found")
+}
+
+func (r *inMemoryVehicleRepository) AssignShipment(id string, trackingID *string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, v := range r.vehicles {
+		if v.ID == id {
+			r.vehicles[i].AssignedShipment = trackingID
+			r.vehicles[i].UpdatedAt = time.Now()
 			return nil
 		}
 	}

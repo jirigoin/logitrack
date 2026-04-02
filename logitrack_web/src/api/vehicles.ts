@@ -27,8 +27,21 @@ export interface CreateVehicleRequest {
   capacity_kg: number;
 }
 
+export interface VehicleStatusResponse {
+  id: string;
+  license_plate: string;
+  type: VehicleType;
+  capacity_kg: number;
+  status: VehicleStatus;
+  status_label: string;
+  updated_at: string;
+  assigned_shipment: string | null;
+}
+
 export const vehicleApi = {
   list: () => api.get<Vehicle[]>("/vehicles").then((r) => r.data),
   create: (data: CreateVehicleRequest) =>
     api.post<Vehicle>("/vehicles", data).then((r) => r.data),
+  getByPlate: (plate: string) =>
+    api.get<VehicleStatusResponse>(`/vehicles/by-plate/${plate}`).then((r) => r.data),
 };

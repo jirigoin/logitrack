@@ -1,5 +1,7 @@
 package model
 
+import "time"
+
 // VehicleStatus represents the current status of a vehicle in the fleet.
 type VehicleStatus string
 
@@ -22,11 +24,13 @@ const (
 
 // Vehicle represents a fleet vehicle.
 type Vehicle struct {
-	ID           string        `json:"id"`
-	LicensePlate string        `json:"license_plate"` // patente
-	Type         VehicleType   `json:"type"`          // tipo
-	CapacityKg   float64       `json:"capacity_kg"`   // capacidad en kg
-	Status       VehicleStatus `json:"status"`
+	ID               string        `json:"id"`
+	LicensePlate     string        `json:"license_plate"` // patente
+	Type             VehicleType   `json:"type"`          // tipo
+	CapacityKg       float64       `json:"capacity_kg"`   // capacidad en kg
+	Status           VehicleStatus `json:"status"`
+	UpdatedAt        time.Time     `json:"updated_at"`
+	AssignedShipment *string       `json:"assigned_shipment,omitempty"` // tracking_id del envío asignado (si existe)
 }
 
 // CreateVehicleRequest is the request body for creating a new vehicle.
