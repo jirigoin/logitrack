@@ -39,6 +39,13 @@ export function VehicleList() {
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleStatusResponse | null>(null);
+  const [showVehicleDetail, setShowVehicleDetail] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [selectedForAssign, setSelectedForAssign] = useState<string>("");
+  const [trackingId, setTrackingId] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<VehicleStatus | "">("");
+  const [showOnlyAvailable, setShowOnlyAvailable] = useState(false);
   const { hasRole } = useAuth();
 
   // Solo Admin y Supervisor pueden gestionar la flota
@@ -118,35 +125,125 @@ export function VehicleList() {
     try {
       const data = await vehicleApi.getByPlate(plate);
       setSelectedVehicle(data);
+      setShowVehicleDetail(true);
     } catch (err) {
       console.error("Failed to load vehicle details:", err);
     }
   };
 
   const closeVehicleDetail = () => {
+    setShowVehicleDetail(false);
     setSelectedVehicle(null);
   };
 
+  const handleOpenAssignModal = () => {
+    if (selectedForAssign) {
+      setShowAssignModal(true);
+    }
+  };
+
+  const handleAssign = async () => {
+    if (!selectedForAssign || !trackingId.trim()) {
+      setError("Debe seleccionar un vehículo e ingresar el tracking ID");
+      return;
+    }
+
+    // Validar formato LT-XXXXXXXX
+    const regex = /^LT-[A-Za-z0-9]{8}$/;
+    if (!regex.test(trackingId.trim().toUpperCase())) {
+      setError("El tracking ID debe tener el formato LT-XXXXXXXX (ej: LT-AB123456)");
+      return;
+    }
+
+    setAssigning(true);
+    setError("");
+
+    try {
+      await vehicleApi.assignToShipment(selectedForAssign, { tracking_id: trackingId.trim().toUpperCase() });
+      setSuccess("Vehículo asignado exitosamente");
+      setShowAssignModal(false);
+      setSelectedForAssign("");
+      setTrackingId("");
+      loadVehicles();
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        setError("El envío con ese tracking ID no existe");
+      } else if (err.response?.status === 409) {
+        setError("El vehículo ya está asignado a un envío");
+      } else {
+        setError("Error al asignar el vehículo");
+      }
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const closeAssignModal = () => {
+    setShowAssignModal(false);
+    setSelectedForAssign("");
+    setTrackingId("");
+    setError("");
+  };
+
+  // Filtrar vehículos
+  const filteredVehicles = vehicles.filter((v) => {
+    if (statusFilter && v.status !== statusFilter) return false;
+    if (showOnlyAvailable && v.status !== "disponible") return false;
+    return true;
+  });
+
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <h1 style={{ margin: 0 }}>Gestión de Flota</h1>
-        {isAdmin && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {isAdmin && (
+            <button
+              onClick={() => setShowForm(!showForm)}
+              style={{
+                background: "#1e3a5f",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 16px",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              + Nuevo Vehículo
+            </button>
+          )}
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => { setShowOnlyAvailable(!showOnlyAvailable); setStatusFilter(""); }}
             style={{
-              background: "#1e3a5f",
-              color: "#fff",
+              background: showOnlyAvailable ? "#10b981" : "#e5e7eb",
+              color: showOnlyAvailable ? "#fff" : "#374151",
               border: "none",
               borderRadius: 6,
               padding: "8px 16px",
               cursor: "pointer",
-              fontWeight: 600,
+              fontWeight: 500,
             }}
           >
-            {showForm ? "Cancelar" : "+ Nuevo Vehículo"}
+            {showOnlyAvailable ? "✓ Disponibles" : "Disponibles"}
           </button>
-        )}
+          <button
+            onClick={handleOpenAssignModal}
+            disabled={!selectedForAssign}
+            style={{
+              background: selectedForAssign ? "#16a34a" : "#9ca3af",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              padding: "8px 16px",
+              cursor: selectedForAssign ? "pointer" : "not-allowed",
+              fontWeight: 600,
+              opacity: selectedForAssign ? 1 : 0.6,
+            }}
+          >
+            Asignar a Envío
+          </button>
+        </div>
       </div>
 
       {/* Formulario de alta */}
@@ -288,20 +385,97 @@ export function VehicleList() {
         </div>
       )}
 
+      {/* Filtros */}
+      <div style={{
+        background: "#f9fafb",
+        border: "1px solid #e5e7eb",
+        borderRadius: 8,
+        padding: 16,
+        marginBottom: 16,
+        display: "flex",
+        gap: 12,
+        alignItems: "center",
+        flexWrap: "wrap",
+      }}>
+        <span style={{ fontSize: 14, fontWeight: 500, color: "#374151" }}>Filtrar por estado:</span>
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value as VehicleStatus | ""); setShowOnlyAvailable(false); }}
+          style={{
+            padding: "6px 12px",
+            borderRadius: 6,
+            border: "1px solid #d1d5db",
+            fontSize: 14,
+            background: "#fff",
+          }}
+        >
+          <option value="">Todos los estados</option>
+          <option value="disponible">Disponible</option>
+          <option value="en_transito">En Tránsito</option>
+          <option value="mantenimiento">Mantenimiento</option>
+          <option value="inactivo">Inactivo</option>
+        </select>
+        {(statusFilter || showOnlyAvailable) && (
+          <button
+            onClick={() => { setStatusFilter(""); setShowOnlyAvailable(false); }}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#6b7280",
+              cursor: "pointer",
+              fontSize: 14,
+              textDecoration: "underline",
+            }}
+          >
+            Limpiar filtros
+          </button>
+        )}
+      </div>
+
+      {/* Mensajes */}
+      {error && !showAssignModal && (
+        <div style={{
+          background: "#fef2f2",
+          border: "1px solid #fecaca",
+          color: "#dc2626",
+          padding: "12px 16px",
+          borderRadius: 6,
+          marginBottom: 20,
+          fontSize: 14,
+        }}>
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div style={{
+          background: "#f0fdf4",
+          border: "1px solid #bbf7d0",
+          color: "#16a34a",
+          padding: "12px 16px",
+          borderRadius: 6,
+          marginBottom: 20,
+          fontSize: 14,
+        }}>
+          {success}
+        </div>
+      )}
+
       {/* Lista de vehículos */}
       {loading ? (
         <p>Cargando...</p>
-      ) : vehicles.length === 0 ? (
-        <p style={{ color: "#6b7280" }}>No hay vehículos registrados en la flota.</p>
+      ) : filteredVehicles.length === 0 ? (
+        <p style={{ color: "#6b7280" }}>No hay vehículos que coincidan con los filtros seleccionados.</p>
       ) : (
         <>
           <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 8 }}>
-            {vehicles.length} vehículo{vehicles.length !== 1 ? "s" : ""} en la flota
+            {filteredVehicles.length} vehículo{filteredVehicles.length !== 1 ? "s" : ""} {showOnlyAvailable ? "disponibles" : "en la flota"}
           </p>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 500 }}>
               <thead>
                 <tr style={{ background: "#f9fafb", textAlign: "left" }}>
+                  <th style={thStyle}>Seleccionar</th>
                   <th style={thStyle}>Patente</th>
                   <th style={thStyle}>Tipo</th>
                   <th style={thStyle}>Capacidad (kg)</th>
@@ -309,13 +483,22 @@ export function VehicleList() {
                 </tr>
               </thead>
               <tbody>
-                {vehicles.map((v) => (
+                {filteredVehicles.map((v) => (
                   <tr
                     key={v.id}
                     style={{ borderBottom: "1px solid #e5e7eb" }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f9ff")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                   >
+                    <td style={tdStyle}>
+                      <input
+                        type="radio"
+                        name="vehicle-select"
+                        checked={selectedForAssign === v.license_plate}
+                        onChange={() => setSelectedForAssign(v.license_plate)}
+                        style={{ width: 18, height: 18, cursor: "pointer" }}
+                      />
+                    </td>
                     <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>
                       <code style={{ fontWeight: 600, fontSize: 15 }}>{v.license_plate}</code>
                     </td>
@@ -355,11 +538,150 @@ export function VehicleList() {
       )}
 
       {/* Modal de detalle de vehículo */}
-      {selectedVehicle && (
+      {showVehicleDetail && selectedVehicle && (
         <VehicleDetailModal
           vehicle={selectedVehicle}
           onClose={closeVehicleDetail}
         />
+      )}
+
+      {/* Modal de asignación */}
+      {showAssignModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={closeAssignModal}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 480,
+              width: "100%",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>Asignar Vehículo a Envío</h2>
+              <button
+                onClick={closeAssignModal}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 24,
+                  cursor: "pointer",
+                  color: "#6b7280",
+                  padding: "4px 8px",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ fontSize: 14, color: "#6b7280", margin: "0 0 8px" }}>Vehículo seleccionado:</p>
+              <div style={{
+                background: "#f9fafb",
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+                padding: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}>
+                <div style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 8,
+                  background: "#10b98120",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <svg style={{ width: 20, height: 20, color: "#10b981" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a1 1 0 100-2 1 1 0 000 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: 0 }}>{selectedForAssign}</p>
+                  <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>
+                    {vehicles.find(v => v.license_plate === selectedForAssign) && vehicleTypeLabels[vehicles.find(v => v.license_plate === selectedForAssign)!.type]}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: "block", marginBottom: 6, fontWeight: 500, fontSize: 14 }}>
+                Tracking ID del Envío *
+              </label>
+              <input
+                type="text"
+                value={trackingId}
+                onChange={(e) => setTrackingId(e.target.value.toUpperCase())}
+                placeholder="Ej: LT-AB123456"
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: 6,
+                  border: "1px solid #d1d5db",
+                  fontSize: 14,
+                  textTransform: "uppercase",
+                }}
+              />
+              <p style={{ fontSize: 12, color: "#6b7280", margin: "4px 0 0" }}>
+                Formato: LT-XXXXXXXX (8 caracteres alfanuméricos)
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={closeAssignModal}
+                disabled={assigning}
+                style={{
+                  background: "#e5e7eb",
+                  color: "#374151",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "8px 16px",
+                  cursor: assigning ? "not-allowed" : "pointer",
+                  fontWeight: 500,
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleAssign}
+                disabled={assigning}
+                style={{
+                  background: "#16a34a",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "8px 20px",
+                  cursor: assigning ? "not-allowed" : "pointer",
+                  fontWeight: 600,
+                  opacity: assigning ? 0.7 : 1,
+                }}
+              >
+                {assigning ? "Asignando..." : "Asignar"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
