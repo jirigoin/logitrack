@@ -102,11 +102,12 @@ func main() {
 	nonDriver := middleware.RequireRoles(model.RoleOperator, model.RoleSupervisor, model.RoleManager, model.RoleAdmin)
 	protected.GET("/branches", nonDriver, branchHandler.List)
 
-	// Vehicles — list: non-driver roles, create: admin only, by-plate: supervisor+, update status: supervisor+
+	// Vehicles — list: non-driver roles, create: admin only, available: supervisor+, by-plate: supervisor+, update status: supervisor+
 	protected.GET("/vehicles", nonDriver, vehicleHandler.List)
+	canViewVehicleStatus := middleware.RequireRoles(model.RoleSupervisor, model.RoleManager, model.RoleAdmin)
+	protected.GET("/vehicles/available", canViewVehicleStatus, vehicleHandler.ListAvailable)
 	canCreateVehicle := middleware.RequireRoles(model.RoleAdmin)
 	protected.POST("/vehicles", canCreateVehicle, vehicleHandler.Create)
-	canViewVehicleStatus := middleware.RequireRoles(model.RoleSupervisor, model.RoleManager, model.RoleAdmin)
 	protected.GET("/vehicles/by-plate/:plate", canViewVehicleStatus, vehicleHandler.GetByPlate)
 	protected.PATCH("/vehicles/by-plate/:plate/status", canViewVehicleStatus, vehicleHandler.UpdateStatusByPlate)
 

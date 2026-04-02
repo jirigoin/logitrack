@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,7 @@ func NewVehicleHandler(repo repository.VehicleRepository) *VehicleHandler {
 func (h *VehicleHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.GET("/vehicles", h.List)
 	r.POST("/vehicles", h.Create)
+	r.GET("/vehicles/available", h.ListAvailable)
 	r.GET("/vehicles/by-plate/:plate", h.GetByPlate)
 	r.PATCH("/vehicles/by-plate/:plate/status", h.UpdateStatusByPlate)
 }
@@ -39,6 +41,60 @@ func (h *VehicleHandler) RegisterRoutes(r *gin.RouterGroup) {
 // @Router       /vehicles [get]
 func (h *VehicleHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, h.repo.List())
+}
+
+// ListAvailable returns only vehicles with status 'disponible', optionally filtered by type and min capacity.
+//
+// @Summary      List available vehicles
+// @Description  Returns only available vehicles. Supports filtering by type and minimum capacity. Accessible to supervisor, manager, and admin roles.
+// @Tags         vehicles
+// @Produce      json
+// @Security     BearerAuth
+// @Param        type     query     string  false  "Filter by vehicle type (motocicleta, furgoneta, camion, camion_grande)"
+// @Param        min_capacity  query  float64 false  "Minimum capacity in kg"
+// @Success      200      {array}   model.Vehicle
+// @Failure      401      {object}  map[string]string
+// @Failure      403      {object}  map[string]string
+// @Router       /vehicles/available [get]
+func (h *VehicleHandler) ListAvailable(c *gin.Context) {
+	vehicles := h.repo.List()
+	result := make([]model.Vehicle, 0)
+
+	// Get filter parameters
+	vehicleType := c.Query("type")
+	minCapacityStr := c.Query("min_capacity")
+
+	var minCapacity float64 = 0
+	if minCapacityStr != "" {
+		if val, err := parseFloat(minCapacityStr); err == nil {
+			minCapacity = val
+		}
+	}
+
+	for _, v := range vehicles {
+		// Filter only available vehicles
+		if v.Status != model.VehicleStatusAvailable {
+			continue
+		}
+
+		// Filter by type
+		if vehicleType != "" && string(v.Type) != vehicleType {
+			continue
+		}
+
+		// Filter by minimum capacity
+		if minCapacity > 0 && v.CapacityKg < minCapacity {
+			continue
+		}
+
+		result = append(result, v)
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+func parseFloat(s string) (float64, error) {
+	return strconv.ParseFloat(s, 64)
 }
 
 // Create adds a new vehicle to the fleet.
