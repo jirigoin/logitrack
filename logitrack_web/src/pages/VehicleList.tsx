@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { vehicleApi, type Vehicle, type VehicleStatus, type VehicleType } from "../api/vehicles";
+import { Link } from "react-router-dom";
+import { vehicleApi, type Vehicle, type VehicleStatus, type VehicleStatusResponse, type VehicleType } from "../api/vehicles";
 import { useAuth } from "../context/AuthContext";
 
 const vehicleTypeLabels: Record<VehicleType, string> = {
@@ -37,6 +38,7 @@ export function VehicleList() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
+  const [selectedVehicle, setSelectedVehicle] = useState<VehicleStatusResponse | null>(null);
   const { hasRole } = useAuth();
 
   const isAdmin = hasRole("admin");
@@ -97,6 +99,19 @@ export function VehicleList() {
     setFormData({ license_plate: "", type: "furgoneta", capacity_kg: 0 });
     setError("");
     setSuccess("");
+  };
+
+  const handleViewVehicle = async (plate: string) => {
+    try {
+      const data = await vehicleApi.getByPlate(plate);
+      setSelectedVehicle(data);
+    } catch (err) {
+      console.error("Failed to load vehicle details:", err);
+    }
+  };
+
+  const closeVehicleDetail = () => {
+    setSelectedVehicle(null);
   };
 
   return (
@@ -274,10 +289,10 @@ export function VehicleList() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 500 }}>
               <thead>
                 <tr style={{ background: "#f9fafb", textAlign: "left" }}>
-                  <th style={th}>Patente</th>
-                  <th style={th}>Tipo</th>
-                  <th style={th}>Capacidad (kg)</th>
-                  <th style={th}>Estado</th>
+                  <th style={thStyle}>Patente</th>
+                  <th style={thStyle}>Tipo</th>
+                  <th style={thStyle}>Capacidad (kg)</th>
+                  <th style={thStyle}>Estado</th>
                 </tr>
               </thead>
               <tbody>
@@ -288,12 +303,12 @@ export function VehicleList() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f9ff")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                   >
-                    <td style={td}>
+                    <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>
                       <code style={{ fontWeight: 600, fontSize: 15 }}>{v.license_plate}</code>
                     </td>
-                    <td style={td}>{vehicleTypeLabels[v.type]}</td>
-                    <td style={td}>{v.capacity_kg} kg</td>
-                    <td style={td}>
+                    <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>{vehicleTypeLabels[v.type]}</td>
+                    <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>{v.capacity_kg} kg</td>
+                    <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>
                       <span
                         style={{
                           display: "inline-flex",
@@ -325,9 +340,212 @@ export function VehicleList() {
           </div>
         </>
       )}
+
+      {/* Modal de detalle de vehículo */}
+      {selectedVehicle && (
+        <VehicleDetailModal
+          vehicle={selectedVehicle}
+          onClose={closeVehicleDetail}
+        />
+      )}
     </div>
   );
 }
 
-const th: React.CSSProperties = { padding: "10px 14px", fontWeight: 600, color: "#374151" };
-const td: React.CSSProperties = { padding: "10px 14px" };
+// Vehicle Detail Modal Component
+function VehicleDetailModal({ vehicle, onClose }: { vehicle: VehicleStatusResponse; onClose: () => void }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.45)",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 12,
+          padding: 24,
+          maxWidth: 560,
+          width: "100%",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div>
+            <p style={{ fontSize: 13, color: "#6b7280", margin: 0, textTransform: "uppercase" }}>Detalle del Vehículo</p>
+            <h2 style={{ fontSize: 24, fontWeight: 700, margin: "4px 0 0", color: "#111827" }}>
+              {vehicle.license_plate}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              fontSize: 24,
+              cursor: "pointer",
+              color: "#6b7280",
+              padding: "4px 8px",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 12,
+              background: getStatusColor(vehicle.status) + "20",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <svg style={{ width: 28, height: 28, color: getStatusColor(vehicle.status) }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a1 1 0 100-2 1 1 0 000 2z" />
+            </svg>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: 9999,
+                  background: getStatusColor(vehicle.status) + "20",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: getStatusColor(vehicle.status),
+                }}
+              >
+                {vehicleStatusLabels[vehicle.status]}
+              </span>
+            </div>
+            <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>
+              ID: #{vehicle.id}
+            </p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: "#f9fafb",
+            border: "1px solid #e5e7eb",
+            borderRadius: 8,
+            padding: 16,
+            marginBottom: 20,
+          }}
+        >
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#374151", margin: "0 0 12px" }}>Información del Vehículo</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 2px" }}>Tipo</p>
+              <p style={{ fontSize: 15, fontWeight: 600, color: "#111827", margin: 0 }}>{vehicleTypeLabels[vehicle.type]}</p>
+            </div>
+            <div>
+              <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 2px" }}>Capacidad</p>
+              <p style={{ fontSize: 15, fontWeight: 600, color: "#111827", margin: 0 }}>{vehicle.capacity_kg} kg</p>
+            </div>
+            {vehicle.updated_at && (
+              <div>
+                <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 2px" }}>Última actualización</p>
+                <p style={{ fontSize: 14, fontWeight: 500, color: "#374151", margin: 0 }}>
+                  {new Date(vehicle.updated_at).toLocaleString()}
+                </p>
+              </div>
+            )}
+            {vehicle.updated_by && (
+              <div>
+                <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 2px" }}>Actualizado por</p>
+                <p style={{ fontSize: 14, fontWeight: 500, color: "#374151", margin: 0 }}>{vehicle.updated_by}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Envíos asignados */}
+        <div
+          style={{
+            background: "#f9fafb",
+            border: "1px solid #e5e7eb",
+            borderRadius: 8,
+            padding: 16,
+          }}
+        >
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#374151", margin: "0 0 12px" }}>Envíos Asignados</h3>
+          {vehicle.assigned_shipment ? (
+            <div>
+              <div
+                style={{
+                  background: "#fff",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                  padding: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: "#1e3a5f", margin: 0 }}>
+                    {vehicle.assigned_shipment}
+                  </p>
+                  <p style={{ fontSize: 12, color: "#6b7280", margin: "2px 0 0" }}>
+                    Tracking ID del envío asignado
+                  </p>
+                </div>
+                <Link
+                  to={`/shipments/${vehicle.assigned_shipment}`}
+                  style={{
+                    background: "#1e3a5f",
+                    color: "#fff",
+                    textDecoration: "none",
+                    borderRadius: 6,
+                    padding: "6px 12px",
+                    fontSize: 13,
+                    fontWeight: 500,
+                  }}
+                  onClick={onClose}
+                >
+                  Ver envío
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "20px 0",
+                color: "#6b7280",
+              }}
+            >
+              <svg style={{ width: 32, height: 32, margin: "0 auto 8px", opacity: 0.5 }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+              </svg>
+              <p style={{ fontSize: 14, margin: 0 }}>Sin envíos asignados</p>
+              <p style={{ fontSize: 12, margin: "4px 0 0" }}>Este vehículo no tiene envíos asignados actualmente</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const thStyle: React.CSSProperties = { padding: "10px 14px", fontWeight: 600, color: "#374151" };
+const tdStyle: React.CSSProperties = { padding: "10px 14px" };
