@@ -11,7 +11,7 @@ api.interceptors.request.use((config) => {
 });
 
 export type VehicleType = "motocicleta" | "furgoneta" | "camion" | "camion_grande";
-export type VehicleStatus = "disponible" | "mantenimiento" | "en_transito" | "inactivo";
+export type VehicleStatus = "disponible" | "en_carga" | "mantenimiento" | "en_transito" | "inactivo";
 
 export interface Vehicle {
   id: string;
@@ -21,6 +21,7 @@ export interface Vehicle {
   status: VehicleStatus;
   assigned_shipment?: string | null;
   assigned_branch?: string | null;
+  destination_branch?: string | null;
 }
 
 export interface CreateVehicleRequest {
@@ -40,6 +41,7 @@ export interface VehicleStatusResponse {
   updated_by?: string;
   assigned_shipment: string | null;
   assigned_branch?: string | null;
+  destination_branch?: string | null;
 }
 
 export interface UpdateVehicleStatusRequest {
@@ -67,6 +69,10 @@ export interface AssignBranchRequest {
   branch_id: string;
 }
 
+export interface EndTripResponse extends VehicleStatusResponse {
+  message: string;
+}
+
 export const vehicleApi = {
   list: () => api.get<Vehicle[]>("/vehicles").then((r) => r.data),
   create: (data: CreateVehicleRequest) =>
@@ -85,6 +91,8 @@ export const vehicleApi = {
     api.post<AssignVehicleResponse>(`/vehicles/by-plate/${plate}/assign`, data).then((r) => r.data),
   assignBranch: (plate: string, data: AssignBranchRequest) =>
     api.post<AssignVehicleResponse>(`/vehicles/by-plate/${plate}/assign-branch`, data).then((r) => r.data),
+  endTrip: (plate: string) =>
+    api.post<EndTripResponse>(`/vehicles/by-plate/${plate}/end-trip`).then((r) => r.data),
   getByShipment: (trackingId: string) =>
     api.get<VehicleStatusResponse>(`/vehicles/by-shipment/${trackingId}`).then((r) => r.data),
 };

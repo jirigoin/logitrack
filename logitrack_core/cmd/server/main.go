@@ -116,6 +116,7 @@ func main() {
 	protected.PATCH("/vehicles/by-plate/:plate/status", canViewVehicleStatus, vehicleHandler.UpdateStatusByPlate)
 	protected.POST("/vehicles/by-plate/:plate/assign", canViewVehicleStatus, vehicleHandler.AssignToShipment)
 	protected.POST("/vehicles/by-plate/:plate/assign-branch", canViewVehicleStatus, vehicleHandler.AssignBranch)
+	protected.POST("/vehicles/by-plate/:plate/end-trip", canViewVehicleStatus, vehicleHandler.EndTrip)
 
 	// Shipments list/search — non-driver roles only
 	protected.GET("/shipments", nonDriver, shipmentHandler.List)

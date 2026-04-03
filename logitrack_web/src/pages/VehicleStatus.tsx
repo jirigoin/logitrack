@@ -122,16 +122,25 @@ export function VehicleStatus() {
     setTransitionError("");
 
     try {
-      const data: UpdateVehicleStatusRequest = {
-        status: newStatus,
-        notes: notes || undefined,
-        force: showForceConfirm,
-      };
+      // Si el vehículo está en tránsito y se quiere cambiar a disponible,
+      // usar el endpoint endTrip que limpia el envío asignado
+      if (vehicle.status === "en_transito" && newStatus === "disponible") {
+        const updated = await vehicleApi.endTrip(vehicle.license_plate);
+        setVehicle(updated);
+        setSuccess(`Viaje finalizado. Vehículo disponible.`);
+        setShowStatusModal(false);
+      } else {
+        const data: UpdateVehicleStatusRequest = {
+          status: newStatus,
+          notes: notes || undefined,
+          force: showForceConfirm,
+        };
 
-      const updated = await vehicleApi.updateStatus(vehicle.license_plate, data);
-      setVehicle(updated);
-      setSuccess(`Estado actualizado a "${updated.status_label}"`);
-      setShowStatusModal(false);
+        const updated = await vehicleApi.updateStatus(vehicle.license_plate, data);
+        setVehicle(updated);
+        setSuccess(`Estado actualizado a "${updated.status_label}"`);
+        setShowStatusModal(false);
+      }
     } catch (err: any) {
       if (err.response?.status === 409) {
         const errorData = err.response?.data;
@@ -142,7 +151,7 @@ export function VehicleStatus() {
       } else if (err.response?.status === 400) {
         setTransitionError(err.response?.data?.error || "Error en los datos");
       } else {
-        setTransitionError("Error al actualizar el estado");
+        setTransitionError(err.response?.data?.error || "Error al actualizar el estado");
       }
     } finally {
       setChangingStatus(false);

@@ -7,6 +7,7 @@ type VehicleStatus string
 
 const (
 	VehicleStatusAvailable     VehicleStatus = "disponible"
+	VehicleStatusLoading       VehicleStatus = "en_carga"
 	VehicleStatusInMaintenance VehicleStatus = "mantenimiento"
 	VehicleStatusInTransit     VehicleStatus = "en_transito"
 	VehicleStatusInactive      VehicleStatus = "inactivo"
@@ -24,15 +25,16 @@ const (
 
 // Vehicle represents a fleet vehicle.
 type Vehicle struct {
-	ID               string        `json:"id"`
-	LicensePlate     string        `json:"license_plate"` // patente
-	Type             VehicleType   `json:"type"`          // tipo
-	CapacityKg       float64       `json:"capacity_kg"`   // capacidad en kg
-	Status           VehicleStatus `json:"status"`
-	UpdatedAt        time.Time     `json:"updated_at"`
-	UpdatedBy        string        `json:"updated_by,omitempty"`        // usuario que realizó el último cambio de estado
-	AssignedShipment *string       `json:"assigned_shipment,omitempty"` // tracking_id del envío asignado (si existe)
-	AssignedBranch   *string       `json:"assigned_branch,omitempty"`   // branch_id asignado (si existe)
+	ID                string        `json:"id"`
+	LicensePlate      string        `json:"license_plate"` // patente
+	Type              VehicleType   `json:"type"`          // tipo
+	CapacityKg        float64       `json:"capacity_kg"`   // capacidad en kg
+	Status            VehicleStatus `json:"status"`
+	UpdatedAt         time.Time     `json:"updated_at"`
+	UpdatedBy         string        `json:"updated_by,omitempty"`         // usuario que realizó el último cambio de estado
+	AssignedShipment  *string       `json:"assigned_shipment,omitempty"`  // tracking_id del envío asignado (si existe)
+	AssignedBranch    *string       `json:"assigned_branch,omitempty"`    // branch_id asignado (branch actual)
+	DestinationBranch *string       `json:"destination_branch,omitempty"` // branch_id de destino (si existe)
 }
 
 // CreateVehicleRequest is the request body for creating a new vehicle.

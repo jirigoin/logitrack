@@ -14,6 +14,7 @@ const vehicleTypeLabels: Record<VehicleType, string> = {
 
 const vehicleStatusLabels: Record<VehicleStatus, string> = {
   disponible: "Disponible",
+  en_carga: "En Carga",
   mantenimiento: "Mantenimiento",
   en_transito: "En Tránsito",
   inactivo: "Inactivo",
@@ -23,8 +24,10 @@ const getStatusColor = (status: VehicleStatus): string => {
   switch (status) {
     case "disponible":
       return "#10b981";
-    case "mantenimiento":
+    case "en_carga":
       return "#f59e0b";
+    case "mantenimiento":
+      return "#f97316";
     case "en_transito":
       return "#3b82f6";
     case "inactivo":
@@ -212,6 +215,64 @@ export function VehicleList() {
     setSelectedForAssign("");
     setTrackingId("");
     setError("");
+  };
+
+  const handleStartTrip = async () => {
+    if (!selectedForAssign) {
+      setError("Debe seleccionar un vehículo");
+      return;
+    }
+
+    setError("");
+    try {
+      // Update vehicle status to "en_transito"
+      await vehicleApi.updateStatus(selectedForAssign, { status: "en_transito" });
+      setSuccess("Viaje iniciado exitosamente. El vehículo está en ruta.");
+      setSelectedForAssign("");
+      loadVehicles();
+    } catch (err: any) {
+      if (err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else {
+        setError("Error al iniciar el viaje");
+      }
+    }
+  };
+
+  const handleEndTrip = async () => {
+    if (!selectedForAssign) {
+      setError("Debe seleccionar un vehículo");
+      return;
+    }
+
+    setError("");
+    try {
+      // Call the end-trip endpoint to clear shipment, destination_branch and change status to available
+      await vehicleApi.endTrip(selectedForAssign);
+      setSuccess("Viaje finalizado exitosamente. El vehículo está disponible nuevamente.");
+      setSelectedForAssign("");
+      loadVehicles();
+    } catch (err: any) {
+      if (err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else {
+        setError("Error al finalizar el viaje");
+      }
+    }
+  };
+
+  // Check if the selected vehicle can start trip (status is "en_carga")
+  const canStartTrip = () => {
+    if (!selectedForAssign) return false;
+    const vehicle = vehicles.find(v => v.license_plate === selectedForAssign);
+    return vehicle?.status === "en_carga";
+  };
+
+  // Check if the selected vehicle can end trip (status is "en_transito")
+  const canEndTrip = () => {
+    if (!selectedForAssign) return false;
+    const vehicle = vehicles.find(v => v.license_plate === selectedForAssign);
+    return vehicle?.status === "en_transito";
   };
 
   // Filtrar vehículos
@@ -487,24 +548,62 @@ export function VehicleList() {
               {filteredVehicles.length} vehículo{filteredVehicles.length !== 1 ? "s" : ""} {showOnlyAvailable ? "disponibles" : "en la flota"}
             </p>
           </div>
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 8 }}>
-            <button
-              onClick={handleOpenAssignModal}
-              disabled={!selectedForAssign}
-              style={{
-                background: selectedForAssign ? "#16a34a" : "#9ca3af",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                padding: "8px 20px",
-                cursor: selectedForAssign ? "pointer" : "not-allowed",
-                fontWeight: 600,
-                opacity: selectedForAssign ? 1 : 0.6,
-                fontSize: 14,
-              }}
-            >
-              Asignar a Envío
-            </button>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 8, gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleOpenAssignModal}
+                disabled={!selectedForAssign}
+                style={{
+                  background: selectedForAssign ? "#16a34a" : "#9ca3af",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "8px 20px",
+                  cursor: selectedForAssign ? "pointer" : "not-allowed",
+                  fontWeight: 600,
+                  opacity: selectedForAssign ? 1 : 0.6,
+                  fontSize: 14,
+                }}
+              >
+                Asignar a Envío
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleStartTrip}
+                disabled={!canStartTrip()}
+                style={{
+                  background: canStartTrip() ? "#3b82f6" : "#9ca3af",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "8px 20px",
+                  cursor: canStartTrip() ? "pointer" : "not-allowed",
+                  fontWeight: 600,
+                  opacity: canStartTrip() ? 1 : 0.6,
+                  fontSize: 14,
+                }}
+              >
+                Iniciar Viaje
+              </button>
+              <button
+                onClick={handleEndTrip}
+                disabled={!canEndTrip()}
+                style={{
+                  background: canEndTrip() ? "#dc2626" : "#9ca3af",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "8px 20px",
+                  cursor: canEndTrip() ? "pointer" : "not-allowed",
+                  fontWeight: 600,
+                  opacity: canEndTrip() ? 1 : 0.6,
+                  fontSize: 14,
+                }}
+              >
+                Terminar Viaje
+              </button>
+            </div>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 500 }}>
@@ -513,7 +612,8 @@ export function VehicleList() {
                   <th style={thStyle}>Seleccionar</th>
                   <th style={thStyle}>Patente</th>
                   <th style={thStyle}>Tipo</th>
-                  <th style={thStyle}>Branch</th>
+                  <th style={thStyle}>Branch Actual</th>
+                  <th style={thStyle}>Branch Destino</th>
                   <th style={thStyle}>Capacidad (kg)</th>
                   <th style={thStyle}>Cap. Disponible (kg)</th>
                   <th style={thStyle}>Estado</th>
@@ -551,6 +651,19 @@ export function VehicleList() {
                           );
                         }
                         return <span style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic" }}>Sin branch</span>;
+                      })()}
+                    </td>
+                    <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>
+                      {(() => {
+                        const branch = v.destination_branch ? branches.find(b => b.id === v.destination_branch) : null;
+                        if (branch) {
+                          return (
+                            <span style={{ fontSize: 13, color: "#1e3a5f", fontWeight: 500 }}>
+                              {branch.name}
+                            </span>
+                          );
+                        }
+                        return <span style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic" }}>—</span>;
                       })()}
                     </td>
                     <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>{v.capacity_kg} kg</td>
