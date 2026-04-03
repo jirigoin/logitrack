@@ -440,6 +440,176 @@ export function VehicleAssignment() {
       )}
 
       {/* Pie de página */}
+      {vehicle && (
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            overflow: "hidden",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+            marginBottom: 24,
+          }}
+        >
+          <div
+            style={{
+              background: vehicle.status === "disponible" ? "#dcfce7" : "#fef3c7",
+              padding: 20,
+              borderBottom: "1px solid #e5e7eb",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+              <div>
+                <p style={{ fontSize: 13, color: "#6b7280", margin: 0, textTransform: "uppercase" }}>Patente</p>
+                <h2 style={{ fontSize: 24, fontWeight: 700, margin: "4px 0 0", color: "#111827" }}>
+                  {vehicle.license_plate}
+                </h2>
+              </div>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 16px",
+                  borderRadius: 9999,
+                  background: vehicle.status === "disponible" ? "#10b98120" : "#f59e0b20",
+                }}
+              >
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    background: vehicle.status === "disponible" ? "#10b981" : "#f59e0b",
+                  }}
+                />
+                <span style={{ fontSize: 14, fontWeight: 600, color: vehicle.status === "disponible" ? "#10b981" : "#b45309" }}>
+                  {vehicle.status_label}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16, marginBottom: 24 }}>
+              <div>
+                <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 4px", textTransform: "uppercase" }}>Tipo</p>
+                <p style={{ fontSize: 15, fontWeight: 600, color: "#111827", margin: 0 }}>{vehicleTypeLabels[vehicle.type]}</p>
+              </div>
+              <div>
+                <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 4px", textTransform: "uppercase" }}>Capacidad</p>
+                <p style={{ fontSize: 15, fontWeight: 600, color: "#111827", margin: 0 }}>{vehicle.capacity_kg} kg</p>
+              </div>
+              <div>
+                <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 4px", textTransform: "uppercase" }}>ID</p>
+                <p style={{ fontSize: 15, fontWeight: 600, color: "#111827", margin: 0 }}>#{vehicle.id}</p>
+              </div>
+              {vehicle.assigned_shipment && (
+                <div>
+                  <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 4px", textTransform: "uppercase" }}>Envío Asignado</p>
+                  <p style={{ fontSize: 15, fontWeight: 600, color: "#1e3a5f", margin: 0 }}>{vehicle.assigned_shipment}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Formulario de asignación - solo si está disponible */}
+            {vehicle.status === "disponible" && !vehicle.assigned_shipment && (
+              <div
+                style={{
+                  background: "#f9fafb",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                  padding: 20,
+                }}
+              >
+                <h3 style={{ fontSize: 16, fontWeight: 600, color: "#111827", margin: "0 0 16px" }}>
+                  Asignar a Envío
+                </h3>
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: "block", marginBottom: 6, fontWeight: 500, fontSize: 14 }}>
+                      Tracking ID del Envío *
+                    </label>
+                    <input
+                      type="text"
+                      value={trackingId}
+                      onChange={(e) => setTrackingId(e.target.value.toUpperCase())}
+                      placeholder="Ej: LT-XXXXXXXX"
+                      style={{
+                        width: "100%",
+                        padding: "10px 14px",
+                        borderRadius: 6,
+                        border: "1px solid #d1d5db",
+                        fontSize: 14,
+                        textTransform: "uppercase",
+                      }}
+                    />
+                  </div>
+                  <button
+                    onClick={handleAssign}
+                    disabled={assigning}
+                    style={{
+                      background: "#16a34a",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      padding: "10px 20px",
+                      cursor: assigning ? "not-allowed" : "pointer",
+                      fontWeight: 600,
+                      fontSize: 14,
+                      opacity: assigning ? 0.7 : 1,
+                      height: 42,
+                    }}
+                  >
+                    {assigning ? "Asignando..." : "Asignar"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Vehículo ya asignado */}
+            {alreadyAssigned && (
+              <div
+                style={{
+                  background: "#fffbeb",
+                  border: "1px solid #fde68a",
+                  borderRadius: 8,
+                  padding: 20,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                  <svg
+                    style={{ width: 24, height: 24, color: "#b45309", flexShrink: 0 }}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                  <h3 style={{ fontSize: 16, fontWeight: 600, color: "#92400e", margin: 0 }}>
+                    Vehículo Ya Asignado
+                  </h3>
+                </div>
+                <p style={{ fontSize: 14, color: "#78350f", margin: 0 }}>
+                  Este vehículo ya está asignado al envío{" "}
+                  <strong style={{ color: "#1e3a5f" }}>{alreadyAssigned.shipment}</strong>
+                  {" "}y su estado actual es <strong>"{alreadyAssigned.status}"</strong>.
+                </p>
+                <p style={{ fontSize: 13, color: "#92400e", margin: "8px 0 0" }}>
+                  Para asignar este vehículo a otro envío, primero debe finalizar o reasignar el envío actual.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Pie de página */}
       <div style={{ marginTop: 24, textAlign: "center" }}>
         <button
           onClick={handleClear}

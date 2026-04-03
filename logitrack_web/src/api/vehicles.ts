@@ -19,6 +19,7 @@ export interface Vehicle {
   type: VehicleType;
   capacity_kg: number;
   status: VehicleStatus;
+  assigned_shipment?: string | null;
 }
 
 export interface CreateVehicleRequest {

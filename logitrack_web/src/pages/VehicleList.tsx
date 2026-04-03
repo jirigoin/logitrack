@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { vehicleApi, type Vehicle, type VehicleStatus, type VehicleStatusResponse, type VehicleType } from "../api/vehicles";
+import { shipmentApi } from "../api/shipments";
 import { useAuth } from "../context/AuthContext";
 
 const vehicleTypeLabels: Record<VehicleType, string> = {
@@ -34,6 +35,7 @@ const getStatusColor = (status: VehicleStatus): string => {
 
 export function VehicleList() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [shipmentWeights, setShipmentWeights] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string>("");
@@ -74,6 +76,27 @@ export function VehicleList() {
     try {
       const data = await vehicleApi.list();
       setVehicles(data ?? []);
+
+      // Load shipment weights for vehicles with assigned shipments
+      const weights: Record<string, number> = {};
+      const assignedShipments = (data ?? []).filter(v => v.assigned_shipment);
+      if (assignedShipments.length > 0) {
+        try {
+          const shipments = await shipmentApi.list();
+          const shipmentMap = new Map(shipments.map(s => [s.tracking_id, s.weight_kg]));
+          for (const v of assignedShipments) {
+            const trackingId = v.assigned_shipment!;
+            const weight = shipmentMap.get(trackingId);
+            console.log(`Vehicle ${v.license_plate}: assigned_shipment=${trackingId}, weight=${weight}, capacity=${v.capacity_kg}`);
+            if (weight !== undefined) {
+              weights[v.license_plate] = weight;
+            }
+          }
+        } catch (err) {
+          console.error("Failed to load shipment weights:", err);
+        }
+      }
+      setShipmentWeights(weights);
     } catch (err) {
       console.error("Failed to load vehicles:", err);
     } finally {
@@ -213,36 +236,6 @@ export function VehicleList() {
               + Nuevo Vehículo
             </button>
           )}
-          <button
-            onClick={() => { setShowOnlyAvailable(!showOnlyAvailable); setStatusFilter(""); }}
-            style={{
-              background: showOnlyAvailable ? "#10b981" : "#e5e7eb",
-              color: showOnlyAvailable ? "#fff" : "#374151",
-              border: "none",
-              borderRadius: 6,
-              padding: "8px 16px",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            {showOnlyAvailable ? "✓ Disponibles" : "Disponibles"}
-          </button>
-          <button
-            onClick={handleOpenAssignModal}
-            disabled={!selectedForAssign}
-            style={{
-              background: selectedForAssign ? "#16a34a" : "#9ca3af",
-              color: "#fff",
-              border: "none",
-              borderRadius: 6,
-              padding: "8px 16px",
-              cursor: selectedForAssign ? "pointer" : "not-allowed",
-              fontWeight: 600,
-              opacity: selectedForAssign ? 1 : 0.6,
-            }}
-          >
-            Asignar a Envío
-          </button>
         </div>
       </div>
 
@@ -397,6 +390,21 @@ export function VehicleList() {
         alignItems: "center",
         flexWrap: "wrap",
       }}>
+        <button
+          onClick={() => { setShowOnlyAvailable(!showOnlyAvailable); setStatusFilter(""); }}
+          style={{
+            background: showOnlyAvailable ? "#10b981" : "#e5e7eb",
+            color: showOnlyAvailable ? "#fff" : "#374151",
+            border: "none",
+            borderRadius: 6,
+            padding: "6px 14px",
+            cursor: "pointer",
+            fontWeight: 500,
+            fontSize: 14,
+          }}
+        >
+          {showOnlyAvailable ? "✓ Disponibles" : "Disponibles"}
+        </button>
         <span style={{ fontSize: 14, fontWeight: 500, color: "#374151" }}>Filtrar por estado:</span>
         <select
           value={statusFilter}
@@ -468,9 +476,30 @@ export function VehicleList() {
         <p style={{ color: "#6b7280" }}>No hay vehículos que coincidan con los filtros seleccionados.</p>
       ) : (
         <>
-          <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 8 }}>
-            {filteredVehicles.length} vehículo{filteredVehicles.length !== 1 ? "s" : ""} {showOnlyAvailable ? "disponibles" : "en la flota"}
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+            <p style={{ fontSize: 13, color: "#6b7280", margin: 0 }}>
+              {filteredVehicles.length} vehículo{filteredVehicles.length !== 1 ? "s" : ""} {showOnlyAvailable ? "disponibles" : "en la flota"}
+            </p>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 8 }}>
+            <button
+              onClick={handleOpenAssignModal}
+              disabled={!selectedForAssign}
+              style={{
+                background: selectedForAssign ? "#16a34a" : "#9ca3af",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 20px",
+                cursor: selectedForAssign ? "pointer" : "not-allowed",
+                fontWeight: 600,
+                opacity: selectedForAssign ? 1 : 0.6,
+                fontSize: 14,
+              }}
+            >
+              Asignar a Envío
+            </button>
+          </div>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, minWidth: 500 }}>
               <thead>
@@ -479,6 +508,7 @@ export function VehicleList() {
                   <th style={thStyle}>Patente</th>
                   <th style={thStyle}>Tipo</th>
                   <th style={thStyle}>Capacidad (kg)</th>
+                  <th style={thStyle}>Cap. Disponible (kg)</th>
                   <th style={thStyle}>Estado</th>
                 </tr>
               </thead>
@@ -504,6 +534,24 @@ export function VehicleList() {
                     </td>
                     <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>{vehicleTypeLabels[v.type]}</td>
                     <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>{v.capacity_kg} kg</td>
+                    <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>
+                      {(() => {
+                        const assignedWeight = shipmentWeights[v.license_plate];
+                        const available = assignedWeight !== undefined 
+                          ? Math.max(0, v.capacity_kg - assignedWeight)
+                          : v.capacity_kg;
+                        const hasAssignment = assignedWeight !== undefined;
+                        const color = available > 0 ? "#10b981" : "#ef4444";
+                        if (v.assigned_shipment) {
+                          console.log(`Render: plate=${v.license_plate}, capacity=${v.capacity_kg}, assignedWeight=${assignedWeight}, available=${available}`);
+                        }
+                        return (
+                          <span style={{ fontWeight: hasAssignment ? 600 : 400, color }}>
+                            {available.toFixed(1)} kg
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td style={{ ...tdStyle, cursor: "pointer" }} onClick={() => handleViewVehicle(v.license_plate)}>
                       <span
                         style={{
