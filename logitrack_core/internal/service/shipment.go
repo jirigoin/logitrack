@@ -603,8 +603,9 @@ func generateDraftID() string {
 
 func isValidTransition(from, to model.Status) bool {
 	allowed := map[model.Status][]model.Status{
-		model.StatusPending:        {},                      // drafts transition via ConfirmDraft, not UpdateStatus
-		model.StatusInProgress:     {model.StatusInTransit}, // confirmed → start transit
+		model.StatusPending:        {},                       // drafts transition via ConfirmDraft, not UpdateStatus
+		model.StatusInProgress:     {model.StatusPreTransit}, // confirmed → pre-transit (vehicle assigned, ready to depart)
+		model.StatusPreTransit:     {model.StatusInTransit},  // pre-transit → start transit
 		model.StatusInTransit:      {model.StatusAtBranch},
 		model.StatusAtBranch:       {model.StatusInTransit, model.StatusDelivering, model.StatusReadyForPickup, model.StatusReadyForReturn},
 		model.StatusDelivering:     {model.StatusDelivered, model.StatusDeliveryFailed},

@@ -125,6 +125,7 @@ export function ShipmentList() {
           <option value="delivering">Delivering</option>
           <option value="pending">Draft</option>
           <option value="in_progress">In Progress</option>
+          <option value="pre_transit">Pre-Transit</option>
           <option value="in_transit">In Transit</option>
           <option value="ready_for_pickup">Ready for Pickup</option>
           <option value="ready_for_return">Ready for Return</option>

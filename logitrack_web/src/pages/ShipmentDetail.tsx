@@ -21,7 +21,8 @@ import { useIsMobile } from "../hooks/useIsMobile";
 
 const TRANSITIONS: Record<ShipmentStatus, ShipmentStatus[]> = {
   pending:           [],
-  in_progress:       ["in_transit"],
+  in_progress:       ["pre_transit"],
+  pre_transit:       ["in_transit"],
   in_transit:        ["at_branch"],
   at_branch:         ["in_transit", "delivering", "ready_for_pickup", "ready_for_return"],
   delivering:        ["delivered", "delivery_failed"],
@@ -36,6 +37,7 @@ const TRANSITIONS: Record<ShipmentStatus, ShipmentStatus[]> = {
 const STATUS_LABELS: Record<ShipmentStatus, string> = {
   pending:           "Draft",
   in_progress:       "In Progress",
+  pre_transit:       "Pre-Transit",
   in_transit:        "In Transit",
   at_branch:         "At Branch",
   delivering:        "Delivering",
@@ -1048,7 +1050,7 @@ function RouteTimeline({ events, origin, receivingBranchId, destination, branche
   const isDelivered = lastEvent?.to_status === "delivered";
 
   const statusColors: Record<ShipmentStatus, string> = {
-    pending: "#9ca3af", in_progress: "#f59e0b", in_transit: "#3b82f6", at_branch: "#8b5cf6", delivering: "#f97316", delivery_failed: "#ef4444", delivered: "#10b981", ready_for_pickup: "#0891b2", ready_for_return: "#7c3aed", returned: "#6b7280", cancelled: "#b91c1c",
+    pending: "#9ca3af", in_progress: "#f59e0b", pre_transit: "#06b6d4", in_transit: "#3b82f6", at_branch: "#8b5cf6", delivering: "#f97316", delivery_failed: "#ef4444", delivered: "#10b981", ready_for_pickup: "#0891b2", ready_for_return: "#7c3aed", returned: "#6b7280", cancelled: "#b91c1c",
   };
 
   const solidLine = (color = "#e5e7eb") => (
