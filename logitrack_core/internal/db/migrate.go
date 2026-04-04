@@ -84,6 +84,25 @@ func RunMigrations(db *sql.DB) error {
 			role       TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
+
+		CREATE TABLE IF NOT EXISTS ml_configs (
+			id              SERIAL PRIMARY KEY,
+			factors         JSONB NOT NULL,
+			alta_threshold  FLOAT NOT NULL DEFAULT 0.65,
+			media_threshold FLOAT NOT NULL DEFAULT 0.35,
+			is_active       BOOLEAN NOT NULL DEFAULT FALSE,
+			created_by      TEXT NOT NULL,
+			created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			notes           TEXT NOT NULL DEFAULT ''
+		);
+
+		CREATE TABLE IF NOT EXISTS ml_models (
+			id          SERIAL PRIMARY KEY,
+			config_id   INTEGER NOT NULL REFERENCES ml_configs(id),
+			model_data  BYTEA NOT NULL,
+			size_bytes  INTEGER NOT NULL,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
 	`)
 	return err
 }
