@@ -62,7 +62,7 @@ export function NewShipment() {
     shipmentApi.list().then((all) => {
       setDrafts(all.filter((s) => s.status === "pending"));
     }).catch(() => {});
-    branchApi.list().then(setBranches).catch(() => {});
+    branchApi.listActive().then(setBranches).catch(() => {});
   }, []);
 
   const set = (field: string, value: unknown) =>
@@ -326,7 +326,6 @@ export function NewShipment() {
               onChange={(e) => set("receiving_branch_id", e.target.value)}>
               <option value="">Select branch...</option>
               {(() => {
-                // Group branches by province
                 const branchesByProvince = branches.reduce((acc, branch) => {
                   if (!acc[branch.province]) acc[branch.province] = [];
                   acc[branch.province].push(branch);
@@ -337,13 +336,24 @@ export function NewShipment() {
                   <optgroup key={province} label={province}>
                     {provinceBranches.map(branch => (
                       <option key={branch.id} value={branch.id}>
-                        {branch.name} - {branch.city}
+                        {branch.name} - {branch.address.city}
                       </option>
                     ))}
                   </optgroup>
                 ));
               })()}
             </select>
+            {form.receiving_branch_id && (() => {
+              const selected = branches.find(b => b.id === form.receiving_branch_id);
+              if (!selected) return null;
+              return (
+                <div style={{ marginTop: 8, padding: "8px 12px", background: "#f0f9ff", border: "1px solid #bfdbfe", borderRadius: 6, fontSize: 13 }}>
+                  <div style={{ fontWeight: 600, color: "#1e3a5f" }}>{selected.name}</div>
+                  <div style={{ color: "#6b7280" }}>{selected.address.street}, {selected.address.city}</div>
+                  <div style={{ color: "#9ca3af", fontSize: 12 }}>Capacity: {selected.capacity_kg.toLocaleString()} kg</div>
+                </div>
+              );
+            })()}
           </Field>
         </Section>
 
