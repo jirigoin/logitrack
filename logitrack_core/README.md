@@ -40,7 +40,7 @@ Este es el paso de validación principal (no hay test suite completo aún).
 | `DB_PASSWORD` | — | Contraseña de DB (requerida) |
 | `DB_NAME` | `logitrack` | Nombre de la base de datos |
 | `DB_SSLMODE` | `require` | SSL mode (`disable` para local) |
-| `ML_MODEL_PATH` | `model.json` | Ruta al modelo ML entrenado |
+| `ML_MODEL_PATH` | `model.json` | Ruta al modelo ML (fallback si la DB no tiene modelo activo) |
 
 ## Notas importantes
 
@@ -52,3 +52,4 @@ Este es el paso de validación principal (no hay test suite completo aún).
 - **Cancelación.** Envíos en estado intermedio pueden cancelarse (`POST /shipments/:id/cancel`) con un motivo obligatorio — excepto `pre_transit` e `in_transit` (el vehículo ya está en operación).
 - **Comentarios.** Supervisores y admins pueden agregar notas internas a envíos no finalizados (`POST /shipments/:id/comments`).
 - **Autocomplete de clientes.** Los datos de remitente y destinatario se guardan automáticamente. `GET /customers?dni=X` permite buscar clientes previos por DNI.
+- **Configuración ML.** Los pesos de los factores de prioridad son configurables en runtime por admins vía `POST /ml/config/regenerate`. El modelo se re-entrena y se persiste en DB (`ml_models`). Si no hay modelo en DB ni archivo `model.json`, el servidor auto-entrena con valores por defecto al arrancar.

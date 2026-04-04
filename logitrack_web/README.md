@@ -45,3 +45,4 @@ npm run lint
 - El seguimiento público (`/track`) no requiere login.
 - Los conductores ven una vista diferente al acceder al detalle de un envío (`DriverShipmentDetail`), optimizada para actualizar el estado desde la ruta.
 - Los supervisores y admins pueden corregir campos de un envío confirmado (botón "Edit data") y cancelar envíos en estado intermedio.
+- Los admins acceden a `/ml-config` para ajustar los pesos de los factores de prioridad ML y regenerar el modelo. Los cambios recalculan la prioridad de todos los envíos activos.

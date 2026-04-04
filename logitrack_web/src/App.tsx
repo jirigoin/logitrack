@@ -11,6 +11,7 @@ import { Login } from "./pages/Login";
 import { DriverRoute } from "./pages/DriverRoute";
 import { DriverShipmentDetail } from "./pages/DriverShipmentDetail";
 import { VehicleList } from "./pages/VehicleList";
+import { MLConfig } from "./pages/MLConfig";
 
 const ROLE_LABELS: Record<string, string> = {
   operator: "Operator",
@@ -42,6 +43,9 @@ function Nav() {
       <NavLink to="/track" style={navStyle}>Track</NavLink>
       {hasRole("supervisor", "manager", "admin") && (
         <NavLink to="/vehicles" style={navStyle}>Fleet</NavLink>
+      )}
+      {hasRole("admin") && (
+        <NavLink to="/ml-config" style={navStyle}>ML Config</NavLink>
       )}
 
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: isMobile ? 8 : 14 }}>
@@ -168,6 +172,12 @@ function AppRoutes() {
           <Route path="/vehicles" element={
             <ProtectedRoute roles={["supervisor", "manager", "admin"]}>
               <VehicleList />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/ml-config" element={
+            <ProtectedRoute roles={["admin"]}>
+              <MLConfig />
             </ProtectedRoute>
           } />
 

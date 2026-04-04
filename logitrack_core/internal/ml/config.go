@@ -20,7 +20,8 @@ var FactorOrder = []string{
 	"route_saturation",
 }
 
-const (
+// Classification thresholds (var so they can be updated at runtime).
+var (
 	AltaThreshold  = 0.65 // score > 0.65 → alta
 	MediaThreshold = 0.35 // score > 0.35 → media, else baja
 )
@@ -52,4 +53,29 @@ var LabelToClass = map[string]int{
 	"alta":  0,
 	"media": 1,
 	"baja":  2,
+}
+
+// DefaultFactors returns the built-in default factor weights.
+func DefaultFactors() map[string]float64 {
+	return map[string]float64{
+		"shipment_type":    3.0,
+		"distance_km":      2.5,
+		"restrictions":     2.0,
+		"time_window":      1.5,
+		"volume_score":     1.0,
+		"route_saturation": 0.8,
+	}
+}
+
+// SetFactors replaces the active priority factor weights.
+func SetFactors(factors map[string]float64) {
+	for k, v := range factors {
+		PriorityFactors[k] = v
+	}
+}
+
+// SetThresholds updates the classification thresholds at runtime.
+func SetThresholds(alta, media float64) {
+	AltaThreshold = alta
+	MediaThreshold = media
 }
