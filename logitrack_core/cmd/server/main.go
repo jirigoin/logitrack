@@ -67,6 +67,12 @@ func main() {
 	}
 	mlClient := service.NewMLService(modelPath)
 
+	// ML config: load active config and model from DB (falls back to file-based model if none)
+	mlConfigRepo := repository.NewPostgresMLConfigRepository(database)
+	mlConfigSvc := service.NewMLConfigService(mlConfigRepo, mlClient, shipmentRepo, database)
+	mlConfigSvc.InitFromDB()
+	mlConfigHandler := handler.NewMLConfigHandler(mlConfigSvc)
+
 	commentSvc := service.NewCommentService(commentRepo, shipmentRepo)
 	shipmentSvc := service.NewShipmentService(shipmentRepo, branchRepo, customerRepo, commentSvc, mlClient)
 	routeSvc := service.NewRouteService(routeRepo, shipmentRepo)
@@ -168,6 +174,13 @@ func main() {
 
 	// Customers — autocomplete by DNI (operator+)
 	protected.GET("/customers", nonDriver, customerHandler.GetByDNI)
+
+	// ML config — admin only
+	adminOnly := middleware.RequireRoles(model.RoleAdmin)
+	protected.GET("/ml/config", adminOnly, mlConfigHandler.GetActive)
+	protected.GET("/ml/config/history", adminOnly, mlConfigHandler.ListHistory)
+	protected.POST("/ml/config/regenerate", adminOnly, mlConfigHandler.Regenerate)
+	protected.POST("/ml/config/:id/activate", adminOnly, mlConfigHandler.Activate)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})

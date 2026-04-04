@@ -48,26 +48,33 @@ Standard layered architecture — requests flow: `handler → service → reposi
 cmd/server/main.go          # Entry point: wires repos, services, handlers, registers routes
 internal/
   model/                    # Pure data structs (no logic): Shipment, ShipmentEvent, Branch, User, Stats,
-                            #   Route, Customer, ShipmentComment, DomainEvent (+ payload types), Vehicle
+                            #   Route, Customer, ShipmentComment, DomainEvent (+ payload types), Vehicle, MLConfig
   repository/               # Interfaces + implementations; swap to Postgres here later
                             #   shipment.go           — ShipmentRepository interface + command structs + in-memory adapter
                             #   shipment_es.go        — Event-sourced ShipmentRepository implementation (active)
                             #   event_store.go        — EventStore interface + in-memory implementation
                             #   vehicle.go            — VehicleRepository interface + in-memory implementation
                             #   postgres_vehicle.go   — PostgreSQL implementation of VehicleRepository
+                            #   ml_config.go          — MLConfigRepository interface
+                            #   postgres_ml_config.go — PostgreSQL implementation (configs + model blobs)
                             #   auth, branch, route, customer, comment
   projection/               # Read-model projectors built from DomainEvents
                             #   shipment.go       — ShipmentProjection (write-through materialized view)
   service/                  # Business logic: shipment (status transitions, tracking ID, estimated delivery),
-                            #   route (driver route assignment/validation), comment (add/list with rules)
-  handler/                  # Gin HTTP handlers: shipment, auth, branch, driver, user, customer, comment, vehicle
-  ml/                       # RandomForest priority prediction: config, dataset generation, train/predict
+                            #   route (driver route assignment/validation), comment (add/list with rules),
+                            #   ml_config (train, save, activate, recalculate active shipment priorities)
+  handler/                  # Gin HTTP handlers: shipment, auth, branch, driver, user, customer, comment, vehicle, ml_config
+  ml/                       # RandomForest priority prediction: config (SetFactors/SetThresholds), dataset generation, train/predict
   middleware/               # Auth (Bearer token check) + RequireRoles (role-based access)
   seed/                     # LoadBranches() + LoadVehicles() + Load(EventStore, *ShipmentProjection, CustomerRepo)
 cmd/train/main.go           # CLI to train and save the ML model (model.json)
 ```
 
-**ML priority prediction** is integrated directly into the backend (no separate service). Uses `github.com/malaschitz/randomForest` for the RandomForest classifier. The model is trained once via `go run cmd/train/main.go` which generates `model.json`. On startup, the backend loads `model.json` via `ML_MODEL_PATH` env var (default: `model.json`). If the model is missing, predictions are silently skipped. The ML pipeline (config → dataset → train → predict) lives in `internal/ml/`.
+**ML priority prediction** is integrated directly into the backend (no separate service). Uses `github.com/malaschitz/randomForest` for the RandomForest classifier. The ML pipeline (config → dataset → train → predict) lives in `internal/ml/`.
+
+**Model storage**: the trained model is stored as a BYTEA blob in the `ml_models` PostgreSQL table, linked to the active `ml_configs` row. On startup, `MLConfigService.InitFromDB()` loads the active config's factors/thresholds and hot-loads the model blob from DB. Fallback chain: DB model → file (`ML_MODEL_PATH` env var, default `model.json`) → auto-train with defaults (if neither exists). `cmd/train/main.go` still exists as a CLI tool to generate a file-based model for the initial Docker build.
+
+**Factor weights and thresholds are configurable at runtime** by admins via `POST /api/v1/ml/config/regenerate`. On regeneration: the new config is saved to `ml_configs`, the forest is retrained with the new weights, the blob is saved to `ml_models`, the in-memory model is hot-swapped, and priorities are recalculated for all non-terminal shipments. Previous configurations are retained as history and can be re-activated via `POST /api/v1/ml/config/:id/activate`.
 
 **Priority is computed and persisted** in three moments:
 - `Create` — predicted from `CreateShipmentRequest` before the repo call; stored on the shipment.
@@ -75,15 +82,15 @@ cmd/train/main.go           # CLI to train and save the ML model (model.json)
 - `CorrectShipment` — re-predicted when any ML-relevant field is corrected (`shipment_type`, `time_window`, `cold_chain`, `is_fragile`, `origin_province`, `destination_province`). The effective values are computed as: original shipment → apply all previously stored corrections → apply incoming correction. This ensures successive edits are consistent.
 
 **Priority fields** stored on `Shipment` and persisted to DB:
-- `priority` — `"alta"` / `"media"` / `"baja"` (threshold: alta > 0.65, media > 0.35)
+- `priority` — `"alta"` / `"media"` / `"baja"` (thresholds are configurable; defaults: alta > 0.65, media > 0.35)
 - `priority_score` — 0.0–1.0 weighted score
 - `priority_confidence` — 0.0–1.0 forest vote share for the winning class
 - `priority_factors` — `map[string]FactorDetail` per-factor breakdown (JSONB in DB)
 
-**Priority factor weights** (total = 10.8):
+**Priority factor weights** — configurable by admin (range 1.0–5.0); defaults:
 
-| Factor | Weight | Normalization |
-|--------|--------|--------------|
+| Factor | Default weight | Normalization |
+|--------|---------------|--------------|
 | `shipment_type` | 3.0 | express=1.0 / normal=0.0 |
 | `distance_km` | 2.5 | Haversine(origin, dest) / 2500 |
 | `restrictions` | 2.0 | (is_fragile + cold_chain) / 2 |
@@ -93,7 +100,7 @@ cmd/train/main.go           # CLI to train and save the ML model (model.json)
 
 Province coordinates for distance (all 24 Argentine provinces + CABA) are defined in `internal/ml/dataset.go ProvinceCoords`. Unknown provinces fall back to Ciudad de Buenos Aires.
 
-**The Dockerfile trains the model** at build time (`RUN go run cmd/train/main.go model.json`) so no pre-built `model.json` needs to be committed. `model.json` is in `.gitignore`.
+**The Dockerfile trains the model** at build time (`RUN go run cmd/train/main.go model.json`) to produce an initial `model.json`. At runtime, if the DB already has an active config with a model blob, that takes precedence and the file is ignored. `model.json` is in `.gitignore`.
 
 **Event sourcing — shipments.** `DomainEvent` objects are the source of truth. Shipment state is never mutated directly; instead each write operation appends a domain event to the `EventStore` and applies it to the `ShipmentProjection` (materialized view). Reads (List, Search, Stats, GetByTrackingID) are served from the projection. `GetEvents` transforms `DomainEvent`s back to the `ShipmentEvent` API format.
 
@@ -170,6 +177,7 @@ pending (draft) ──confirm──► in_progress ──[vehicle assigned]─�
 - Supervisor + Admin: GET /users/drivers; PATCH /vehicles/by-plate/:plate/status; POST /vehicles/by-plate/:plate/assign-branch, /start-trip, /end-trip; DELETE /vehicles/by-plate/:plate/shipments/:trackingId
 - Operator + Supervisor + Admin: POST /vehicles/by-plate/:plate/assign (assigns shipment to vehicle → pre_transit)
 - Admin only: POST /vehicles (create vehicle)
+- Admin only: GET /ml/config, GET /ml/config/history, POST /ml/config/regenerate, POST /ml/config/:id/activate
 - Driver only: GET /driver/route
 
 **Operator restrictions** (enforced in `handler/shipment.go UpdateStatus`):
@@ -256,12 +264,12 @@ npm run lint
 
 ```
 src/
-  api/          # Axios clients: shipments.ts, auth.ts, branches.ts, driver.ts, users.ts, customers.ts, vehicles.ts
+  api/          # Axios clients: shipments.ts, auth.ts, branches.ts, driver.ts, users.ts, customers.ts, vehicles.ts, mlConfig.ts
                 # shipments.ts has request interceptor (adds Bearer token) and
                 # response interceptor (redirects to /login on 401)
   context/      # AuthContext: stores user + token in localStorage, exposes login/logout/hasRole
   components/   # ProtectedRoute (role guard), StatusBadge, PriorityBadge
-  pages/        # One file per screen (including DriverRoute, DriverShipmentDetail, VehicleList, VehicleStatus, VehicleAssignment, AvailableVehicles)
+  pages/        # One file per screen (including DriverRoute, DriverShipmentDetail, VehicleList, VehicleStatus, VehicleAssignment, AvailableVehicles, MLConfig)
   utils/date.ts # fmtDate / fmtDateTime — always use these for date display (DD/MM/AAAA format)
 ```
 
@@ -275,6 +283,7 @@ src/
 - `Cancel shipment` button in `ShipmentDetail`: only supervisor + admin, hidden on `pending` and terminal states (`delivered`, `returned`, `cancelled`)
 - Fleet nav link (`Fleet`): all non-driver roles
 - Vehicle assignment panel in `ShipmentDetail`: operator + supervisor + admin, shown when shipment is `in_progress`, `at_branch`, or `ready_for_pickup`
+- ML Config nav link: admin only
 
 **Branches** are fetched from `GET /api/v1/branches` at runtime — never hardcoded in the frontend. The `branchLabel(city, branches)` helper in `api/branches.ts` maps a city string to a display name. In `RouteTimeline`, nodes show city + province directly from the branches array (not the display name).
 
@@ -300,6 +309,7 @@ src/
 | `/vehicles/:plate/status` | VehicleStatus | supervisor, manager, admin |
 | `/vehicles/:plate/assign` | VehicleAssignment | supervisor, admin |
 | `/vehicles/available` | AvailableVehicles | supervisor, manager, admin |
+| `/ml-config` | MLConfig | admin |
 
 ---
 
@@ -363,6 +373,7 @@ Seven core entities plus supporting value objects:
 | **Route** | id, date, driver_id, shipment_ids[], created_by, created_at | Links a driver to shipments for a given day. ID format: `ROUTE-XXXXXXXX`. |
 | **Customer** | dni, name, phone, email, address | Auto-populated from shipment sender/recipient data. Used for DNI autocomplete. |
 | **Vehicle** | id, license_plate, type, capacity_kg, status, updated_at, updated_by, assigned_shipments[], assigned_branch, destination_branch | Fleet vehicle. `license_plate` is unique. `assigned_branch` = current branch; `destination_branch` set during a trip. Persisted in PostgreSQL via `postgres_vehicle.go`. |
+| **MLConfig** | id, factors (map), alta_threshold, media_threshold, is_active, created_by, created_at, notes | One active config at a time. Factor weights range 1.0–5.0. History retained indefinitely. Model blob stored separately in `ml_models` table (BYTEA). |
 
 **Value objects**: `Address` (street, city, province, postal_code), `Status` (enum), `PackageType` (enum: envelope, box, pallet), `ShipmentType` (enum: normal, express), `TimeWindow` (enum: morning, afternoon, flexible), `Role` (enum), `VehicleStatus` (enum: disponible, en_carga, mantenimiento, en_transito, inactivo), `VehicleType` (enum: motocicleta, furgoneta, camion, camion_grande).
 
@@ -435,4 +446,8 @@ Customers from all shipments are auto-upserted into the customer repository for 
 | POST | /api/v1/vehicles/by-plate/:plate/start-trip | Bearer | supervisor, admin | Start trip; all shipments → in_transit; vehicle → en_transito |
 | POST | /api/v1/vehicles/by-plate/:plate/end-trip | Bearer | supervisor, admin | End trip; all shipments → at_branch; vehicle → disponible at destination |
 | DELETE | /api/v1/vehicles/by-plate/:plate/shipments/:trackingId | Bearer | supervisor, admin | Unassign shipment from vehicle (only when en_carga); shipment → at_branch |
+| GET | /api/v1/ml/config | Bearer | admin | Get active ML config (factors + thresholds); returns defaults if none saved |
+| GET | /api/v1/ml/config/history | Bearer | admin | List all ML config versions ordered by date desc |
+| POST | /api/v1/ml/config/regenerate | Bearer | admin | Save new config, retrain model, hot-swap, recalculate active shipment priorities |
+| POST | /api/v1/ml/config/:id/activate | Bearer | admin | Roll back to a previous config version |
 | GET | /health | public | — | Health check |

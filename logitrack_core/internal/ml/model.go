@@ -106,6 +106,51 @@ func SaveModel(forest *randomforest.Forest, path string) error {
 	return nil
 }
 
+// LoadFromBytes loads a trained model from a byte slice (e.g. from the database).
+func (s *MLService) LoadFromBytes(data []byte) error {
+	var forest randomforest.Forest
+	if err := json.Unmarshal(data, &forest); err != nil {
+		return fmt.Errorf("unmarshal model: %w", err)
+	}
+	s.mu.Lock()
+	s.forest = &forest
+	s.mu.Unlock()
+	fmt.Printf("[ML] Model loaded from DB (%d bytes, %d trees)\n", len(data), forest.NTrees)
+	return nil
+}
+
+// TrainAndReturnBytes trains a new model using the current PriorityFactors and thresholds,
+// and returns the serialized model as bytes (no file I/O).
+func TrainAndReturnBytes() ([]byte, error) {
+	fmt.Printf("[ML] Generating dataset (%d samples)...\n", DatasetSize)
+	samples := GenerateDataset(DatasetSize, RandomState)
+
+	xData := make([][]float64, len(samples))
+	yData := make([]int, len(samples))
+	for i, s := range samples {
+		xData[i] = s.Features
+		yData[i] = s.Class
+	}
+
+	forest := randomforest.Forest{
+		Data: randomforest.ForestData{
+			X:     xData,
+			Class: yData,
+		},
+	}
+
+	fmt.Printf("[ML] Training RandomForest (%d trees)...\n", NumTrees)
+	forest.Train(NumTrees)
+	fmt.Printf("[ML] Training complete.\n")
+
+	data, err := json.Marshal(forest)
+	if err != nil {
+		return nil, fmt.Errorf("marshal model: %w", err)
+	}
+	fmt.Printf("[ML] Model serialized (%d bytes)\n", len(data))
+	return data, nil
+}
+
 // PredictFromShipment predicts priority for an existing shipment.
 func (s *MLService) PredictFromShipment(shipment model.Shipment) *model.PriorityPrediction {
 	origin := shipment.Sender.Address.Province

@@ -33,6 +33,11 @@ Las empresas de logística operan con múltiples sucursales, distintos perfiles 
 - Validar identidad del destinatario o remitente mediante DNI antes de registrar entregas o devoluciones.
 - **Gestión de flota**: asignar vehículos a envíos, iniciar y finalizar viajes, cambiar estados de vehículos.
 
+### Para los administradores
+
+- Todo lo anterior, más configuración avanzada del sistema.
+- **Configuración ML**: ajustar los pesos de los factores que determinan la prioridad de cada envío (tipo de envío, distancia, restricciones, ventana horaria, volumen, saturación de ruta) y regenerar el modelo con un clic. Los cambios recalculan la prioridad de todos los envíos activos automáticamente. Se conserva historial de configuraciones anteriores con opción de reactivarlas.
+
 ### Para los conductores
 
 - Vista optimizada para dispositivos móviles con los envíos asignados a su ruta.
