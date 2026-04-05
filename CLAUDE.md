@@ -49,24 +49,28 @@ cmd/server/main.go          # Entry point: wires repos, services, handlers, regi
 internal/
   model/                    # Pure data structs (no logic): Shipment, ShipmentEvent, Branch, User, Stats,
                             #   Route, Customer, ShipmentComment, DomainEvent (+ payload types), Vehicle, MLConfig
-  repository/               # Interfaces + implementations; swap to Postgres here later
+  repository/               # Interfaces + implementations; PostgreSQL-backed for Branch, Vehicle, MLConfig
                             #   shipment.go           — ShipmentRepository interface + command structs + in-memory adapter
                             #   shipment_es.go        — Event-sourced ShipmentRepository implementation (active)
                             #   event_store.go        — EventStore interface + in-memory implementation
                             #   vehicle.go            — VehicleRepository interface + in-memory implementation
                             #   postgres_vehicle.go   — PostgreSQL implementation of VehicleRepository
+                            #   branch.go             — BranchRepository interface + in-memory implementation
+                            #   postgres_branch.go    — PostgreSQL implementation of BranchRepository (CRUD + status)
                             #   ml_config.go          — MLConfigRepository interface
                             #   postgres_ml_config.go — PostgreSQL implementation (configs + model blobs)
-                            #   auth, branch, route, customer, comment
+                            #   auth, route, customer, comment
   projection/               # Read-model projectors built from DomainEvents
                             #   shipment.go       — ShipmentProjection (write-through materialized view)
   service/                  # Business logic: shipment (status transitions, tracking ID, estimated delivery),
+                            #   branch (CRUD, status management, active-only listing, search by name/ID/city;
+                            #           sentinel errors: ErrBranchNotFound, ErrBranchDuplicateName, ErrBranchNotActive),
                             #   route (driver route assignment/validation), comment (add/list with rules),
                             #   ml_config (train, save, activate, recalculate active shipment priorities)
   handler/                  # Gin HTTP handlers: shipment, auth, branch, driver, user, customer, comment, vehicle, ml_config
   ml/                       # RandomForest priority prediction: config (SetFactors/SetThresholds), dataset generation, train/predict
   middleware/               # Auth (Bearer token check) + RequireRoles (role-based access)
-  seed/                     # LoadBranches() + LoadVehicles() + Load(EventStore, *ShipmentProjection, CustomerRepo)
+  seed/                     # LoadBranches() (in branch_seed.go) + LoadVehicles() + Load(EventStore, *ShipmentProjection, CustomerRepo)
 cmd/train/main.go           # CLI to train and save the ML model (model.json)
 ```
 
@@ -167,16 +171,16 @@ pending (draft) ──confirm──► in_progress ──[vehicle assigned]─�
 - `delivery_failed → at_branch`: not required — auto-derived from the last `at_branch` event
 
 **Role-based route permissions** (defined in `main.go`):
-- Non-driver roles (operator, supervisor, manager, admin): GET /shipments, /branches, /search, /customers, /vehicles
+- Non-driver roles (operator, supervisor, manager, admin): GET /shipments, /branches, /branches/search, /search, /customers, /vehicles
 - All roles including driver: GET /shipments/:id, /shipments/:id/events, /shipments/:id/comments, /vehicles/by-shipment/:trackingId
 - Operator + Supervisor + Admin: POST /shipments, /shipments/draft; PATCH /shipments/:id/draft; POST /shipments/:id/confirm
 - Operator + Supervisor + Admin + Driver: PATCH /shipments/:id/status (operator and driver further restricted in handler — see below)
 - Operator + Supervisor + Admin: POST /shipments/:id/comments
 - Supervisor + Manager + Admin: GET /stats, /vehicles/by-plate/:plate
 - Operator + Supervisor + Manager + Admin: GET /vehicles/available
-- Supervisor + Admin: GET /users/drivers; PATCH /vehicles/by-plate/:plate/status; POST /vehicles/by-plate/:plate/assign-branch, /start-trip, /end-trip; DELETE /vehicles/by-plate/:plate/shipments/:trackingId
+- Supervisor + Admin: GET /users/drivers; PATCH /vehicles/by-plate/:plate/status; POST /vehicles/by-plate/:plate/assign-branch, /start-trip, /end-trip; DELETE /vehicles/by-plate/:plate/shipments/:trackingId; PATCH /branches/:id/status
 - Operator + Supervisor + Admin: POST /vehicles/by-plate/:plate/assign (assigns shipment to vehicle → pre_transit)
-- Admin only: POST /vehicles (create vehicle)
+- Admin only: POST /vehicles (create vehicle); POST /branches, PATCH /branches/:id
 - Admin only: GET /ml/config, GET /ml/config/history, POST /ml/config/regenerate, POST /ml/config/:id/activate
 - Driver only: GET /driver/route
 
@@ -269,7 +273,7 @@ src/
                 # response interceptor (redirects to /login on 401)
   context/      # AuthContext: stores user + token in localStorage, exposes login/logout/hasRole
   components/   # ProtectedRoute (role guard), StatusBadge, PriorityBadge
-  pages/        # One file per screen (including DriverRoute, DriverShipmentDetail, VehicleList, VehicleStatus, VehicleAssignment, AvailableVehicles, MLConfig)
+  pages/        # One file per screen (including BranchList, DriverRoute, DriverShipmentDetail, VehicleList, VehicleStatus, VehicleAssignment, AvailableVehicles, MLConfig)
   utils/date.ts # fmtDate / fmtDateTime — always use these for date display (DD/MM/AAAA format)
 ```
 
@@ -284,14 +288,21 @@ src/
 - Fleet nav link (`Fleet`): all non-driver roles
 - Vehicle assignment panel in `ShipmentDetail`: operator + supervisor + admin, shown when shipment is `in_progress`, `at_branch`, or `ready_for_pickup`
 - ML Config nav link: admin only
+- `Export CSV` button in `ShipmentList`: only admin + manager; exports the currently filtered shipments (state, branch, date range, search text all applied)
 
-**Branches** are fetched from `GET /api/v1/branches` at runtime — never hardcoded in the frontend. The `branchLabel(city, branches)` helper in `api/branches.ts` maps a city string to a display name. In `RouteTimeline`, nodes show city + province directly from the branches array (not the display name).
+**Branches** are fetched from `GET /api/v1/branches` at runtime — never hardcoded in the frontend. The `branchLabel(city, branches)` helper in `api/branches.ts` maps a city string to a display name. In `RouteTimeline`, nodes show city + province directly from the branches array (not the display name). Use `branchApi.listActive()` for dropdowns that should only offer operational branches (e.g. receiving branch on new shipment). The `Branch` interface exposes `address` (street, city, province, postal_code), `status`, `created_at`, `updated_at`, `updated_by`. Helpers `statusLabel()` and `statusColor()` are in `api/branches.ts`.
+
+**Branch dropdowns** (receiving branch in NewShipment, destination branch in VehicleList start-trip) group options by province with `<optgroup>` and sort both provinces and branches within each group alphabetically via `localeCompare`.
+
+**ShipmentList filter**: the `status` query param pre-selects the filter on load (e.g. `/?status=pending`). Default filter is `active` (excludes `delivered`, `pending`, `returned`, and `cancelled`). A **branch filter** by `receiving_branch_id` and a **date range filter** are also applied client-side. Date filtering uses local timezone to avoid UTC/local mismatches; the backend `date_from`/`date_to` params are not used. The branch filter dropdown uses the same province-grouped, alphabetically sorted select pattern.
 
 **Draft workflow**: drafts (`pending`) are created via `POST /shipments/draft` and edited via `PATCH /shipments/:id/draft`. After saving changes in `ShipmentDetail`, the UI redirects to `/?status=pending` (shipment list pre-filtered to Draft). Confirming a draft via `POST /shipments/:id/confirm` generates a real `LT-` tracking ID and moves the shipment to `in_progress`.
 
 **ShipmentList filter**: the `status` query param pre-selects the filter on load (e.g. `/?status=pending`). Default filter is `active` (excludes `delivered`, `pending`, `returned`, and `cancelled`). Date filtering is applied client-side using local timezone — the backend `date_from`/`date_to` params are not used, to avoid UTC/local timezone mismatches in displayed dates.
 
 **Shipment list ordering**: the backend returns shipments sorted by tracking ID ascending (`List()` and `Search()` both apply `sort.Slice`).
+
+**CSV export**: admin and manager can download the currently filtered shipment list as a CSV file via the "Export CSV" button. The export is client-side (no extra API call) and reflects all active filters. Corrected field values take precedence over originals. File name format: `shipments_YYYY-MM-DD.csv`. Sender/recipient names are intentionally excluded (personal data — Ley 25.326); no DNI, email, phone, or full address is exported. See spec US-074.
 
 ### Screen → route map
 
@@ -309,6 +320,7 @@ src/
 | `/vehicles/:plate/status` | VehicleStatus | supervisor, manager, admin |
 | `/vehicles/:plate/assign` | VehicleAssignment | supervisor, admin |
 | `/vehicles/available` | AvailableVehicles | supervisor, manager, admin |
+| `/branches` | BranchList | operator, supervisor, manager, admin |
 | `/ml-config` | MLConfig | admin |
 
 ---
@@ -368,7 +380,7 @@ Seven core entities plus supporting value objects:
 | **Shipment** | tracking_id, status, sender/recipient info, origin/destination (Address), weight_kg, package_type, shipment_type, time_window, cold_chain, is_fragile, receiving_branch_id, current_location, timestamps, priority, priority_score, priority_confidence, priority_factors, corrections | Central aggregate. Tracking ID is `LT-XXXX` (confirmed) or `DRAFT-XXXX` (pending). `corrections` is a typed `ShipmentCorrections` struct of non-destructive field overrides. Priority fields are set by the ML service on create/confirm/correct. |
 | **ShipmentEvent** | id, tracking_id, event_type, from_status, to_status, changed_by, location, notes, timestamp | Immutable audit log of every status change. `event_type`: `"status_change"` or `"edited"`. |
 | **ShipmentComment** | id, tracking_id, author, body, created_at | Internal notes on a shipment. Cannot be added to finalized shipments. |
-| **Branch** | id, name, city, province | Physical logistics branches. Loaded from seed data at startup. |
+| **Branch** | id, name, address (street, city, province, postal_code), province, status, created_at, updated_at, updated_by | Logistics warehouses/branches. Persistent in PostgreSQL. Statuses: activo, inactivo, fuera_de_servicio. CRUD via service/branch.go. |
 | **User** | id, username, role | Auth identity. Roles: `operator`, `supervisor`, `manager`, `admin`, `driver`. |
 | **Route** | id, date, driver_id, shipment_ids[], created_by, created_at | Links a driver to shipments for a given day. ID format: `ROUTE-XXXXXXXX`. |
 | **Customer** | dni, name, phone, email, address | Auto-populated from shipment sender/recipient data. Used for DNI autocomplete. |
@@ -388,9 +400,9 @@ Seven core entities plus supporting value objects:
 
 ## Seed data
 
-On startup, `seed.Load()` populates 8 branches, 8 sample shipments, and 3 sample vehicles:
+On startup, `seed.Load()` populates 36 branches, 8 sample shipments, and 3 sample vehicles:
 
-**Branches** (seed/seed.go `LoadBranches`): caba, san-pedro, cordoba, mendoza, rio-gallegos, jujuy, posadas, ushuaia.
+**Branches** (seed/branch_seed.go `LoadBranches`): 36 branches across all Argentine provinces, persisted in PostgreSQL. Each has a full address (street, city, province, postal_code) and status `activo`. Seeded via `Create` with duplicate-name protection — idempotent on restart.
 
 Branch `name` follows the format `XXXX-NN` — 4-letter code derived from the city name + 2-digit counter per city (e.g. `CDBA-01` for Ciudad de Buenos Aires, `CORD-01` for Córdoba). Increment the counter (`-02`, `-03`) if a second branch exists in the same city.
 
@@ -417,7 +429,11 @@ Customers from all shipments are auto-upserted into the customer repository for 
 |--------|------|------|-------|-------------|
 | POST | /api/v1/auth/login | public | — | Login, returns token + user |
 | GET | /api/v1/auth/me | Bearer | all | Current user info |
-| GET | /api/v1/branches | Bearer | non-driver | List all branches |
+| GET | /api/v1/branches | Bearer | non-driver | List all branches (query: `status`) |
+| GET | /api/v1/branches/search | Bearer | non-driver | Search by name, ID, or city (query: `q`) |
+| POST | /api/v1/branches | Bearer | admin | Create new branch |
+| PATCH | /api/v1/branches/:id | Bearer | admin | Edit branch data (active only) |
+| PATCH | /api/v1/branches/:id/status | Bearer | supervisor, admin | Change branch status |
 | GET | /api/v1/shipments | Bearer | non-driver | List shipments (query: `status`, `date_from`, `date_to`) |
 | GET | /api/v1/search | Bearer | non-driver | Search by tracking ID or recipient name (query: `q`) |
 | GET | /api/v1/shipments/:tracking_id | Bearer | all | Get shipment detail |
